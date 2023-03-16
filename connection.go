@@ -198,7 +198,8 @@ type connection struct {
 	keepAlivePingSent bool
 	keepAliveInterval time.Duration
 
-	datagramQueue *datagramQueue
+	datagramQueue        *datagramQueue
+	maxDatagramFrameSize protocol.ByteCount
 
 	connStateMutex sync.Mutex
 	connState      ConnectionState
@@ -308,9 +309,13 @@ var newConnection = func(
 	}
 	if s.config.EnableDatagrams {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
+		if s.config.MaxDatagramFrameSize != 0 {
+			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
+		}
 	} else {
 		params.MaxDatagramFrameSize = protocol.InvalidByteCount
 	}
+	s.maxDatagramFrameSize = params.MaxDatagramFrameSize
 	if s.tracer != nil && s.tracer.SentTransportParameters != nil {
 		s.tracer.SentTransportParameters(params)
 	}
@@ -417,9 +422,13 @@ var newClientConnection = func(
 	}
 	if s.config.EnableDatagrams {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
+		if s.config.MaxDatagramFrameSize != 0 {
+			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
+		}
 	} else {
 		params.MaxDatagramFrameSize = protocol.InvalidByteCount
 	}
+	s.maxDatagramFrameSize = params.MaxDatagramFrameSize
 	if s.tracer != nil && s.tracer.SentTransportParameters != nil {
 		s.tracer.SentTransportParameters(params)
 	}
@@ -1580,7 +1589,7 @@ func (s *connection) handleAckFrame(frame *wire.AckFrame, encLevel protocol.Encr
 }
 
 func (s *connection) handleDatagramFrame(f *wire.DatagramFrame) error {
-	if f.Length(s.version) > wire.MaxDatagramSize {
+	if f.Length(s.version) > s.maxDatagramFrameSize {
 		return &qerr.TransportError{
 			ErrorCode:    qerr.ProtocolViolation,
 			ErrorMessage: "DATAGRAM frame too large",
