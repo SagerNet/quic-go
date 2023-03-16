@@ -190,6 +190,8 @@ type Config struct {
 	// See https://datatracker.ietf.org/doc/html/draft-ietf-quic-reliable-stream-reset-07.
 	EnableStreamResetPartialDelivery bool
 	Tracer                           func(context.Context, logging.Perspective, ConnectionID) *logging.ConnectionTracer
+
+	MaxDatagramFrameSize int64
 }
 
 // ClientHelloInfo contains information about an incoming connection attempt.
