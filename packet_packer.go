@@ -145,7 +145,11 @@ type packetPacker struct {
 
 	numNonAckElicitingAcks int
 	qlogger                qlogwriter.Recorder
+
+	peekTimes int
 }
+
+const DatagramFrameMaxPeekTimes = 10
 
 var _ packer = &packetPacker{}
 
@@ -710,6 +714,7 @@ func (p *packetPacker) composeNextPacket(
 			tooLarge := size > p.maxDatagramFrameSize
 			if !tooLarge && size <= maxPayloadSize-pl.length { // DATAGRAM frame fits
 				p.datagramQueue.Pop()
+				p.peekTimes = 0
 				pl.frames = append(pl.frames, ackhandler.Frame{Frame: f})
 				pl.numDatagramFrames++
 				pl.length += size
@@ -724,6 +729,7 @@ func (p *packetPacker) composeNextPacket(
 				// Discard this frame. There's no point in retrying this in the next packet,
 				// as it's unlikely that the available packet size will increase.
 				p.datagramQueue.Pop()
+				p.peekTimes = 0
 				if p.qlogger != nil {
 					p.qlogger.RecordEvent(qlog.DatagramDropped{
 						Direction: qlog.DirectionSending,
@@ -732,6 +738,15 @@ func (p *packetPacker) composeNextPacket(
 					})
 				}
 			} else {
+				p.peekTimes++
+				if p.peekTimes > DatagramFrameMaxPeekTimes {
+					if p.datagramQueue.logger.Debug() {
+						p.datagramQueue.logger.Debugf("Discarded DATAGRAM frame (%d bytes payload)", len(f.Data))
+					}
+					p.datagramQueue.Pop()
+					p.peekTimes = 0
+					continue
+				}
 				// The DATAGRAM frame will be sent in a later packet.
 				// It might not be the last frame in that packet, so it needs the length field.
 				f.DataLenPresent = true
