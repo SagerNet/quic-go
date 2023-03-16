@@ -135,7 +135,11 @@ type packetPacker struct {
 	rand                rand.Rand
 
 	numNonAckElicitingAcks int
+
+	peekTimes int
 }
+
+const DatagramFrameMaxPeekTimes = 10
 
 var _ packer = &packetPacker{}
 
@@ -660,13 +664,23 @@ func (p *packetPacker) composeNextPacket(
 				pl.frames = append(pl.frames, ackhandler.Frame{Frame: f})
 				pl.length += size
 				p.datagramQueue.Pop()
+				p.peekTimes = 0
 			} else if !hasAck {
 				// The DATAGRAM frame doesn't fit, and the packet doesn't contain an ACK.
 				// Discard this frame. There's no point in retrying this in the next packet,
 				// as it's unlikely that the available packet size will increase.
 				p.datagramQueue.Pop()
+				p.peekTimes = 0
 			}
 			// If the DATAGRAM frame was too large and the packet contained an ACK, we'll try to send it out later.
+			p.peekTimes++
+			if p.peekTimes > DatagramFrameMaxPeekTimes {
+				if p.datagramQueue.logger != nil && p.datagramQueue.logger.Debug() {
+					p.datagramQueue.logger.Debugf("Discarded DATAGRAM frame (%d bytes payload)", size)
+				}
+				p.datagramQueue.Pop()
+				p.peekTimes = 0
+			}
 		}
 	}
 
