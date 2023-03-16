@@ -353,6 +353,9 @@ var newConnection = func(
 	}
 	if s.config.EnableDatagrams {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
+		if s.config.MaxDatagramFrameSize != 0 {
+			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
+		}
 	} else {
 		params.MaxDatagramFrameSize = protocol.InvalidByteCount
 	}
@@ -479,6 +482,9 @@ var newClientConnection = func(
 	}
 	if s.config.EnableDatagrams {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
+		if s.config.MaxDatagramFrameSize != 0 {
+			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
+		}
 	} else {
 		params.MaxDatagramFrameSize = protocol.InvalidByteCount
 	}
