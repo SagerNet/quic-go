@@ -72,6 +72,7 @@ func (c *basicConn) ReadPacket() (receivedPacket, error) {
 	buffer.Data = buffer.Data[:protocol.MaxPacketBufferSize]
 	n, addr, err := c.ReadFrom(buffer.Data)
 	if err != nil {
+		buffer.Release()
 		return receivedPacket{}, err
 	}
 	return receivedPacket{
