@@ -833,6 +833,14 @@ func (g *appConnIDGenerator) GenerateConnectionID() (ConnectionID, error) {
 	return c, err
 }
 
+func (t *Transport) SetCreatedConn(createdConn bool) {
+	t.createdConn = createdConn
+}
+
+func (t *Transport) SetSingleUse(isSingleUse bool) {
+	t.isSingleUse = isSingleUse
+}
+
 type packetHandlerMap Transport
 
 var _ connRunner = &packetHandlerMap{}
