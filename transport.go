@@ -525,9 +525,6 @@ func (t *Transport) close(e error) {
 	}
 }
 
-// only print warnings about the UDP receive buffer size once
-var setBufferWarningOnce sync.Once
-
 func (t *Transport) listen(conn rawConn) {
 	for {
 		p, err := conn.ReadPacket()
