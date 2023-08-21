@@ -267,7 +267,7 @@ func (t *Transport) dial(ctx context.Context, addr net.Addr, host string, tlsCon
 	}
 	conf = populateConfig(conf)
 	tlsConf = tlsConf.Clone()
-	setTLSConfigServerName(tlsConf, addr, host)
+	// setTLSConfigServerName(tlsConf, addr, host)
 	return t.doDial(ctx,
 		newSendConn(t.conn, addr, udp.PacketInfo{}, utils.DefaultLogger),
 		tlsConf,
