@@ -16,7 +16,7 @@ import (
 	"github.com/quic-go/quic-go/congestion"
 	"github.com/quic-go/quic-go/internal/ackhandler"
 	"github.com/quic-go/quic-go/internal/flowcontrol"
-	"github.com/quic-go/quic-go/internal/handshake"
+	"github.com/quic-go/quic-go/internal/handshake_ech"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/utils"

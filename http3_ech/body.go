@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/ech"
 	"github.com/quic-go/quic-go/internal/utils"
 )
 

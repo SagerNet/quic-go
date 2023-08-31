@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/quic-go/qpack"
-	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/ech"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/exp/slog"

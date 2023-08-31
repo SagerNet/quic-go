@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/quic-go/quic-go/internal/handshake"
+	"github.com/quic-go/quic-go/internal/handshake_ech"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/wire"
