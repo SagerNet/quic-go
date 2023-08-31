@@ -30,7 +30,7 @@ const (
 // A ClientToken is a token received by the client.
 // It can be used to skip address validation on future connection attempts.
 type ClientToken struct {
-	data []byte
+	Data []byte
 }
 
 type TokenStore interface {

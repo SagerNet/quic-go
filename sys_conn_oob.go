@@ -70,7 +70,7 @@ type oobConn struct {
 	readPos uint8
 	// Packets received from the kernel, but not yet returned by ReadPacket().
 	messages []ipv4.Message
-	buffers  [batchSize]*packetBuffer
+	buffers  [batchSize]*PacketBuffer
 
 	cap connCapabilities
 }
@@ -163,7 +163,7 @@ func (c *oobConn) ReadPacket() (receivedPacket, error) {
 		c.messages = c.messages[:batchSize]
 		// replace buffers data buffers up to the packet that has been consumed during the last ReadBatch call
 		for i := uint8(0); i < c.readPos; i++ {
-			buffer := getPacketBuffer()
+			buffer := GetPacketBuffer()
 			buffer.Data = buffer.Data[:protocol.MaxPacketBufferSize]
 			c.buffers[i] = buffer
 			c.messages[i].Buffers[0] = c.buffers[i].Data

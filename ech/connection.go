@@ -453,7 +453,7 @@ var newClientConnection = func(
 	}
 	if s.config.TokenStore != nil {
 		if token := s.config.TokenStore.Pop(s.tokenStoreKey); token != nil {
-			s.packer.SetToken(token.data)
+			s.packer.SetToken(token.Data)
 		}
 	}
 	return s
@@ -639,7 +639,7 @@ runLoop:
 			s.logger.Debugf("Sending a keep-alive PING to keep the connection alive.")
 			s.framer.QueueControlFrame(&wire.PingFrame{})
 			s.keepAlivePingSent = true
-		} else if !s.handshakeComplete && now.Sub(s.creationTime) >= s.config.handshakeTimeout() {
+		} else if !s.handshakeComplete && now.Sub(s.creationTime) >= handshakeTimeout(s.config) {
 			s.destroyImpl(qerr.ErrHandshakeTimeout)
 			continue
 		} else {
@@ -726,7 +726,7 @@ func (s *connection) nextKeepAliveTime() time.Time {
 func (s *connection) maybeResetTimer() {
 	var deadline time.Time
 	if !s.handshakeComplete {
-		deadline = s.creationTime.Add(s.config.handshakeTimeout())
+		deadline = s.creationTime.Add(handshakeTimeout(s.config))
 		if t := s.idleTimeoutStartTime().Add(s.config.HandshakeIdleTimeout); t.Before(deadline) {
 			deadline = t
 		}
@@ -1543,7 +1543,7 @@ func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
 		}
 	}
 	if s.config.TokenStore != nil {
-		s.config.TokenStore.Put(s.tokenStoreKey, &ClientToken{data: frame.Token})
+		s.config.TokenStore.Put(s.tokenStoreKey, &ClientToken{Data: frame.Token})
 	}
 	return nil
 }

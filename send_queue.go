@@ -7,7 +7,7 @@ import (
 )
 
 type sender interface {
-	Send(p *packetBuffer, gsoSize uint16, ecn protocol.ECN)
+	Send(p *PacketBuffer, gsoSize uint16, ecn protocol.ECN)
 	Run() error
 	WouldBlock() bool
 	Available() <-chan struct{}
@@ -15,7 +15,7 @@ type sender interface {
 }
 
 type queueEntry struct {
-	buf     *packetBuffer
+	buf     *PacketBuffer
 	gsoSize uint16
 	ecn     protocol.ECN
 }
@@ -45,7 +45,7 @@ func newSendQueue(conn sendConn) sender {
 // Send sends out a packet. It's guaranteed to not block.
 // Callers need to make sure that there's actually space in the send queue by calling WouldBlock.
 // Otherwise Send will panic.
-func (h *sendQueue) Send(p *packetBuffer, gsoSize uint16, ecn protocol.ECN) {
+func (h *sendQueue) Send(p *PacketBuffer, gsoSize uint16, ecn protocol.ECN) {
 	select {
 	case h.queue <- queueEntry{buf: p, gsoSize: gsoSize, ecn: ecn}:
 		// clear available channel if we've reached capacity

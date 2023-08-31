@@ -8,18 +8,12 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-// Clone clones a Config
-func (c *Config) Clone() *Config {
-	copy := *c
-	return &copy
-}
-
-func (c *Config) handshakeTimeout() time.Duration {
+func handshakeTimeout(c *Config) time.Duration {
 	return 2 * c.HandshakeIdleTimeout
 }
 
-func (c *Config) maxRetryTokenAge() time.Duration {
-	return c.handshakeTimeout()
+func maxRetryTokenAge(c *Config) time.Duration {
+	return handshakeTimeout(c)
 }
 
 func validateConfig(config *Config) error {
