@@ -3,6 +3,7 @@ package quic
 import (
 	"bytes"
 	"context"
+	stdTLS "crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/quic-go/quic-go/congestion"
 	"github.com/quic-go/quic-go/internal/ackhandler"
@@ -702,6 +704,8 @@ func (s *connection) ConnectionState() ConnectionState {
 	defer s.connStateMutex.Unlock()
 	cs := s.cryptoStreamHandler.ConnectionState()
 	// s.connState.TLS = cs.ConnectionState
+	s.connState.TLS = *(*stdTLS.ConnectionState)(unsafe.Pointer(&cs.ConnectionState))
+	s.connState.ExportKeyingMaterial = cs.ConnectionState.ExportKeyingMaterial
 	s.connState.Used0RTT = cs.Used0RTT
 	s.connState.GSO = s.conn.capabilities().GSO
 	return s.connState

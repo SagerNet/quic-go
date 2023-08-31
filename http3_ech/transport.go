@@ -342,12 +342,12 @@ func (t *Transport) dial(ctx context.Context, hostname string) (quic.EarlyConnec
 			traceConnectStart(trace, network, udpAddr.String())
 			traceTLSHandshakeStart(trace)
 			conn, err := t.transport.DialEarly(ctx, udpAddr, tlsCfg, cfg)
-			var state tls.ConnectionState
+			/*var state tls.ConnectionState
 			if conn != nil {
 				state = conn.ConnectionState().TLS
 			}
 			traceTLSHandshakeDone(trace, state, err)
-			traceConnectDone(trace, network, udpAddr.String(), err)
+			traceConnectDone(trace, network, udpAddr.String(), err)*/
 			return conn, err
 		}
 	}

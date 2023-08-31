@@ -100,6 +100,6 @@ func traceTLSHandshakeStart(trace *httptrace.ClientTrace) {
 
 func traceTLSHandshakeDone(trace *httptrace.ClientTrace, state tls.ConnectionState, err error) {
 	if trace != nil && trace.TLSHandshakeDone != nil {
-		trace.TLSHandshakeDone(state, err)
+		//trace.TLSHandshakeDone(state, err)
 	}
 }
