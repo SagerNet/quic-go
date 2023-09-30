@@ -4,8 +4,11 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go/congestion"
+	cgInternal "github.com/quic-go/quic-go/internal/congestion"
 	"github.com/quic-go/quic-go/internal/protocol"
 )
+
+var _ cgInternal.SendAlgorithmEx = &ccAdapter{}
 
 type ccAdapter struct {
 	CC congestion.CongestionControl
@@ -37,6 +40,10 @@ func (a *ccAdapter) OnPacketAcked(number protocol.PacketNumber, ackedBytes proto
 
 func (a *ccAdapter) OnCongestionEvent(number protocol.PacketNumber, lostBytes protocol.ByteCount, priorInFlight protocol.ByteCount) {
 	a.CC.OnCongestionEvent(congestion.PacketNumber(number), congestion.ByteCount(lostBytes), congestion.ByteCount(priorInFlight))
+}
+
+func (a *ccAdapter) OnCongestionEventEx(priorInFlight protocol.ByteCount, eventTime time.Time, ackedPackets []congestion.AckedPacketInfo, lostPackets []congestion.LostPacketInfo) {
+	a.CC.OnCongestionEventEx(congestion.ByteCount(priorInFlight), eventTime, ackedPackets, lostPackets)
 }
 
 func (a *ccAdapter) OnRetransmissionTimeout(packetsRetransmitted bool) {

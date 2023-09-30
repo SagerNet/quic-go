@@ -11,6 +11,27 @@ type (
 	PacketNumber protocol.PacketNumber
 )
 
+// Expose some constants from protocol that congestion control algorithms may need.
+const (
+	InitialPacketSize          = protocol.InitialPacketSize
+	MinPacingDelay             = protocol.MinPacingDelay
+	MaxPacketBufferSize        = protocol.MaxPacketBufferSize
+	MinInitialPacketSize       = protocol.MinInitialPacketSize
+	MaxCongestionWindowPackets = protocol.MaxCongestionWindowPackets
+	PacketsPerConnectionID     = protocol.PacketsPerConnectionID
+)
+
+type AckedPacketInfo struct {
+	PacketNumber PacketNumber
+	BytesAcked   ByteCount
+	ReceivedTime time.Time
+}
+
+type LostPacketInfo struct {
+	PacketNumber PacketNumber
+	BytesLost    ByteCount
+}
+
 type CongestionControl interface {
 	SetRTTStatsProvider(provider RTTStatsProvider)
 	TimeUntilSend(bytesInFlight ByteCount) time.Time
@@ -20,6 +41,7 @@ type CongestionControl interface {
 	MaybeExitSlowStart()
 	OnPacketAcked(number PacketNumber, ackedBytes ByteCount, priorInFlight ByteCount, eventTime time.Time)
 	OnCongestionEvent(number PacketNumber, lostBytes ByteCount, priorInFlight ByteCount)
+	OnCongestionEventEx(priorInFlight ByteCount, eventTime time.Time, ackedPackets []AckedPacketInfo, lostPackets []LostPacketInfo)
 	OnRetransmissionTimeout(packetsRetransmitted bool)
 	SetMaxDatagramSize(size ByteCount)
 	InSlowStart() bool
