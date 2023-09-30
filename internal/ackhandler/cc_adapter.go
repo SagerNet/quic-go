@@ -8,7 +8,10 @@ import (
 	"github.com/quic-go/quic-go/internal/protocol"
 )
 
-var _ cgInternal.SendAlgorithmEx = &ccAdapter{}
+var (
+	_ cgInternal.SendAlgorithmEx             = &ccAdapter{}
+	_ cgInternal.SendAlgorithmWithDebugInfos = &ccAdapter{}
+)
 
 type ccAdapter struct {
 	CC congestion.CongestionControl
