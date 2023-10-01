@@ -965,6 +965,10 @@ func (h *sentPacketHandler) getCongestionControl() congestion.SendAlgorithmWithD
 func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionControl) {
 	h.congestionMutex.Lock()
 	cc.SetRTTStatsProvider(h.rttStats)
-	h.congestion = &ccAdapter{cc}
+	if ccEx, isEx := cc.(congestionExt.CongestionControlEx); isEx {
+		h.congestion = &ccAdapterEx{ccEx}
+	} else {
+		h.congestion = &ccAdapter{cc}
+	}
 	h.congestionMutex.Unlock()
 }
