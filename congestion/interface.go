@@ -42,12 +42,16 @@ type CongestionControl interface {
 	MaybeExitSlowStart()
 	OnPacketAcked(number PacketNumber, ackedBytes ByteCount, priorInFlight ByteCount, eventTime time.Time)
 	OnCongestionEvent(number PacketNumber, lostBytes ByteCount, priorInFlight ByteCount)
-	OnCongestionEventEx(priorInFlight ByteCount, eventTime time.Time, ackedPackets []AckedPacketInfo, lostPackets []LostPacketInfo)
 	OnRetransmissionTimeout(packetsRetransmitted bool)
 	SetMaxDatagramSize(size ByteCount)
 	InSlowStart() bool
 	InRecovery() bool
 	GetCongestionWindow() ByteCount
+}
+
+type CongestionControlEx interface {
+	CongestionControl
+	OnCongestionEventEx(priorInFlight ByteCount, eventTime time.Time, ackedPackets []AckedPacketInfo, lostPackets []LostPacketInfo)
 }
 
 type RTTStatsProvider interface {
