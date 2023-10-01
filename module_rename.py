@@ -7,9 +7,9 @@ import fileinput
 
 
 PKG_ORIGINAL = "github.com/quic-go/quic-go"
-PKG_NEW = "github.com/apernet/quic-go"
+PKG_NEW = "github.com/sagernet/quic-go"
 
-EXTENSIONS = [".go", ".md", ".mod", ".sh"]
+EXTENSIONS = [".go", ".mod"]
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-r", "--reverse", action="store_true")
