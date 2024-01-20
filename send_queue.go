@@ -1,6 +1,10 @@
 package quic
 
-import "github.com/quic-go/quic-go/internal/protocol"
+import (
+	"errors"
+
+	"github.com/quic-go/quic-go/internal/protocol"
+)
 
 type sender interface {
 	Send(p *packetBuffer, gsoSize uint16, ecn protocol.ECN)
@@ -83,7 +87,8 @@ func (h *sendQueue) Run() error {
 				// 1. Checking for "datagram too large" message from the kernel, as such,
 				// 2. Path MTU discovery,and
 				// 3. Eventual detection of loss PingFrame.
-				if !isSendMsgSizeErr(err) {
+				var tooLarge *DatagramTooLargeError
+				if !isSendMsgSizeErr(err) && !errors.As(err, &tooLarge) {
 					return err
 				}
 			}
