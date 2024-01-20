@@ -3,6 +3,7 @@ package quic
 import (
 	"sync"
 
+	"github.com/quic-go/quic-go/internal/utils"
 	list "github.com/quic-go/quic-go/internal/utils/linkedlist"
 )
 
@@ -19,14 +20,14 @@ func newSingleOriginTokenStore(size int) *singleOriginTokenStore {
 func (s *singleOriginTokenStore) Add(token *ClientToken) {
 	s.tokens[s.p] = token
 	s.p = s.index(s.p + 1)
-	s.len = min(s.len+1, len(s.tokens))
+	s.len = utils.Min(s.len+1, len(s.tokens))
 }
 
 func (s *singleOriginTokenStore) Pop() *ClientToken {
 	s.p = s.index(s.p - 1)
 	token := s.tokens[s.p]
 	s.tokens[s.p] = nil
-	s.len = max(s.len-1, 0)
+	s.len = utils.Max(s.len-1, 0)
 	return token
 }
 

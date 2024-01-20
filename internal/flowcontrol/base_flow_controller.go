@@ -103,7 +103,7 @@ func (c *baseFlowController) maybeAdjustWindowSize(now time.Time) {
 	fraction := float64(bytesReadInEpoch) / float64(c.receiveWindowSize)
 	if now.Sub(c.epochStartTime) < time.Duration(4*fraction*float64(rtt)) {
 		// window is consumed too fast, try to increase the window size
-		newSize := min(2*c.receiveWindowSize, c.maxReceiveWindowSize)
+		newSize := utils.Min(2*c.receiveWindowSize, c.maxReceiveWindowSize)
 		if newSize > c.receiveWindowSize && (c.allowWindowIncrease == nil || c.allowWindowIncrease(newSize-c.receiveWindowSize)) {
 			c.receiveWindowSize = newSize
 		}

@@ -209,7 +209,7 @@ func (h *appDataReceivedPacketTracker) GetAckFrame(now time.Time, onlyIfQueued b
 	if ack == nil {
 		return nil
 	}
-	ack.DelayTime = max(0, now.Sub(h.largestObservedRcvdTime))
+	ack.DelayTime = utils.Max(0, now.Sub(h.largestObservedRcvdTime))
 	h.ackQueued = false
 	h.ackAlarm = time.Time{}
 	h.ackElicitingPacketsReceivedSinceLastAck = 0

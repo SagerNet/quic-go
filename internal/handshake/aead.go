@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 
 	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/quic-go/quic-go/internal/utils"
 )
 
 func createAEAD(suite *cipherSuite, trafficSecret []byte, v protocol.Version) *xorNonceAEAD {
@@ -78,7 +79,7 @@ func (o *longHeaderOpener) Open(dst, src []byte, pn protocol.PacketNumber, ad []
 	binary.BigEndian.PutUint64(o.nonceBuf[:], uint64(pn))
 	dec, err := o.aead.Open(dst, o.nonceBuf[:], src, ad)
 	if err == nil {
-		o.highestRcvdPN = max(o.highestRcvdPN, pn)
+		o.highestRcvdPN = utils.Max(o.highestRcvdPN, pn)
 	} else {
 		err = ErrDecryptionFailed
 	}

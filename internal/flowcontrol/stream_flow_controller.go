@@ -123,7 +123,7 @@ func (c *streamFlowController) AddBytesSent(n protocol.ByteCount) {
 }
 
 func (c *streamFlowController) SendWindowSize() protocol.ByteCount {
-	return min(c.baseFlowController.SendWindowSize(), c.connection.SendWindowSize())
+	return utils.Min(c.baseFlowController.SendWindowSize(), c.connection.SendWindowSize())
 }
 
 func (c *streamFlowController) IsNewlyBlocked() bool {

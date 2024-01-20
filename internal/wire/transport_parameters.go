@@ -12,6 +12,7 @@ import (
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qerr"
+	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -299,7 +300,7 @@ func (p *TransportParameters) readNumericTransportParameter(b []byte, paramID tr
 			return fmt.Errorf("initial_max_streams_uni too large: %d (maximum %d)", p.MaxUniStreamNum, protocol.MaxStreamCount)
 		}
 	case maxIdleTimeoutParameterID:
-		p.MaxIdleTimeout = max(protocol.MinRemoteIdleTimeout, time.Duration(val)*time.Millisecond)
+		p.MaxIdleTimeout = utils.Max(protocol.MinRemoteIdleTimeout, time.Duration(val)*time.Millisecond)
 	case maxUDPPayloadSizeParameterID:
 		if val < 1200 {
 			return fmt.Errorf("invalid value for max_udp_payload_size: %d (minimum 1200)", val)

@@ -86,7 +86,7 @@ func (c *connectionFlowController) EnsureMinimumWindowSize(inc protocol.ByteCoun
 	if inc <= c.receiveWindowSize {
 		return
 	}
-	newSize := min(inc, c.maxReceiveWindowSize)
+	newSize := utils.Min(inc, c.maxReceiveWindowSize)
 	if delta := newSize - c.receiveWindowSize; delta > 0 && c.allowWindowIncrease(delta) {
 		c.receiveWindowSize = newSize
 		if c.logger.Debug() {
