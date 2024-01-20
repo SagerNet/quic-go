@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+function remove_unused() {
+    git rm -rf --ignore-unmatch \
+      .circleci .github .oss-scanner docs *.yml \
+      AI-POLICY.md FUZZING.md oss-fuzz.sh \
+      *_test.go **/*_test.go **/testdata testutils integrationtests \
+      mock_*.go **/mock_*.go internal/mocks mockgen.go tools.go \
+      example interop fuzzing metrics
+}
+
+remove_unused
+remove_unused
+
+./reformat.sh
+
+go mod tidy
+git commit -a -m "Remove unused"
