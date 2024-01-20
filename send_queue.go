@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"errors"
 	"net"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -93,7 +94,7 @@ func (h *sendQueue) Run() error {
 				// 1. Checking for "datagram too large" message from the kernel, as such,
 				// 2. Path MTU discovery,and
 				// 3. Eventual detection of loss PingFrame.
-				if !udp.IsSendMsgSizeErr(err) {
+				if _, tooLarge := errors.AsType[*DatagramTooLargeError](err); !udp.IsSendMsgSizeErr(err) && !tooLarge {
 					return err
 				}
 			}
