@@ -2720,3 +2720,8 @@ func estimateMaxPayloadSize(mtu protocol.ByteCount) protocol.ByteCount {
 func (c *Conn) SetCongestionControl(cc congestion.CongestionControl) {
 	c.sentPacketHandler.SetCongestionControl(cc)
 }
+
+// SetRemoteAddr Replace the current remote addr with a new one
+func (c *Conn) SetRemoteAddr(addr net.Addr) {
+	c.conn.SetRemoteAddr(addr)
+}
