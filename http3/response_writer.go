@@ -3,7 +3,6 @@ package http3
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/textproto"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/quic-go/qpack"
+	"golang.org/x/exp/slog"
 	"golang.org/x/net/http/httpguts"
 )
 

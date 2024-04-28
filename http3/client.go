@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptrace"
 	"net/textproto"
@@ -15,6 +14,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
+	"golang.org/x/exp/slog"
 )
 
 const (
