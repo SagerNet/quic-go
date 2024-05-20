@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/internal/utils"
 )
 
 var _ quic.Stream = &stateTrackingStream{}
@@ -45,7 +46,7 @@ func newStateTrackingStream(s quic.Stream, clearer streamClearer, setter errorSe
 		setter:  setter,
 	}
 
-	context.AfterFunc(s.Context(), func() {
+	utils.AfterFunc(s.Context(), func() {
 		t.closeSend(context.Cause(s.Context()))
 	})
 

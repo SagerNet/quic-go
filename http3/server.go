@@ -19,6 +19,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qtls"
+	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/exp/slog"
 )
@@ -659,7 +660,7 @@ func (s *Server) handleRequest(conn *connection, str quic.Stream, datagrams *dat
 
 	ctx, cancel := context.WithCancel(conn.Context())
 	req = req.WithContext(ctx)
-	context.AfterFunc(str.Context(), cancel)
+	utils.AfterFunc(str.Context(), cancel)
 
 	r := newResponseWriter(hstr, conn, req.Method == http.MethodHead, s.Logger)
 	handler := s.Handler
