@@ -211,6 +211,8 @@ type Connection interface {
 	SetCongestionControl(congestion.CongestionControl)
 	// SetRemoteAddr Replace the current remote addr with a new one
 	SetRemoteAddr(addr net.Addr)
+	// Config Return current config
+	Config() *Config
 }
 
 // An EarlyConnection is a connection that is handshaking.
