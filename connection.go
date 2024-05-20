@@ -2725,3 +2725,8 @@ func (c *Conn) SetCongestionControl(cc congestion.CongestionControl) {
 func (c *Conn) SetRemoteAddr(addr net.Addr) {
 	c.conn.SetRemoteAddr(addr)
 }
+
+// Config Return current config
+func (c *Conn) Config() *Config {
+	return c.config
+}
