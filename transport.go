@@ -296,7 +296,7 @@ func (t *Transport) doDial(
 	logger.Infof("Starting new connection to %s (%s -> %s), source connection ID %s, destination connection ID %s, version %s", tlsConf.ServerName, sendConn.LocalAddr(), sendConn.RemoteAddr(), srcConnID, destConnID, version)
 
 	conn := newClientConnection(
-		context.WithoutCancel(ctx),
+		utils.WithoutCancel(ctx),
 		sendConn,
 		t.handlerMap,
 		destConnID,
