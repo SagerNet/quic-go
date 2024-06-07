@@ -2604,7 +2604,7 @@ func (s *connection) SendDatagram(p []byte) error {
 	)
 	if protocol.ByteCount(len(p)) > maxDataLen {
 		return &DatagramTooLargeError{
-			MaxDataLen: int64(maxDataLen),
+			MaxDatagramPayloadSize: int64(maxDataLen),
 		}
 	}
 	f.Data = make([]byte, len(p))
