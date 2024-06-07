@@ -1,9 +1,10 @@
 package qtls
 
 import (
-	"crypto/tls"
 	"fmt"
 	"unsafe"
+
+	"github.com/sagernet/cloudflare-tls"
 )
 
 //go:linkname cipherSuitesTLS13 crypto/tls.cipherSuitesTLS13

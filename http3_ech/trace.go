@@ -1,7 +1,7 @@
 package http3
 
 import (
-	"crypto/tls"
+	"github.com/sagernet/cloudflare-tls"
 	"net"
 	"net/http/httptrace"
 	"net/textproto"

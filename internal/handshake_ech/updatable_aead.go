@@ -3,7 +3,6 @@ package handshake
 import (
 	"crypto"
 	"crypto/cipher"
-	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/sagernet/cloudflare-tls"
 )
 
 // KeyUpdateInterval is the maximum number of packets we send or receive before initiating a key update.

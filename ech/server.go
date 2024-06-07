@@ -2,7 +2,6 @@ package quic
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/sagernet/cloudflare-tls"
 )
 
 // ErrServerClosed is returned by the Listener or EarlyListener's Accept method after a call to Close.

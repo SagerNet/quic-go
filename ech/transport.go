@@ -3,7 +3,6 @@ package quic
 import (
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/sagernet/cloudflare-tls"
 )
 
 // ErrTransportClosed is returned by the Transport's Listen or Dial method after it was closed.

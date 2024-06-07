@@ -2,9 +2,9 @@ package handshake
 
 import (
 	"crypto"
-	"crypto/tls"
 
 	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/cloudflare-tls"
 	"golang.org/x/crypto/hkdf"
 )
 

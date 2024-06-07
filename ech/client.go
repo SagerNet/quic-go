@@ -2,11 +2,11 @@ package quic
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"net"
 
 	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/cloudflare-tls"
 )
 
 // make it possible to mock connection ID for initial generation in the tests

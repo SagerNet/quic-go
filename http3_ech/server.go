@@ -2,9 +2,9 @@ package http3
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
+	qtls "github.com/quic-go/quic-go/internal/qtls_ech"
 	"io"
 	"net"
 	"net/http"
@@ -18,9 +18,9 @@ import (
 	"github.com/quic-go/qpack"
 	"github.com/quic-go/quic-go/ech"
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/internal/qtls_ech"
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/sagernet/cloudflare-tls"
 	"golang.org/x/exp/slog"
 )
 

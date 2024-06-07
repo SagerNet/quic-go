@@ -2,11 +2,11 @@ package qtls
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"net"
 
 	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/cloudflare-tls"
 )
 
 type (

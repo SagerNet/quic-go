@@ -3,7 +3,6 @@ package quic
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +21,7 @@ import (
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/sagernet/cloudflare-tls"
 )
 
 type unpacker interface {
@@ -701,7 +701,7 @@ func (s *connection) ConnectionState() ConnectionState {
 	s.connStateMutex.Lock()
 	defer s.connStateMutex.Unlock()
 	cs := s.cryptoStreamHandler.ConnectionState()
-	s.connState.TLS = cs.ConnectionState
+	// s.connState.TLS = cs.ConnectionState
 	s.connState.Used0RTT = cs.Used0RTT
 	s.connState.GSO = s.conn.capabilities().GSO
 	return s.connState
