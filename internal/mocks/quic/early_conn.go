@@ -15,6 +15,7 @@ import (
 	reflect "reflect"
 
 	quic "github.com/quic-go/quic-go"
+	congestion "github.com/quic-go/quic-go/congestion"
 	qerr "github.com/quic-go/quic-go/internal/qerr"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -619,4 +620,16 @@ func (c *MockEarlyConnectionSendDatagramCall) Do(f func([]byte) error) *MockEarl
 func (c *MockEarlyConnectionSendDatagramCall) DoAndReturn(f func([]byte) error) *MockEarlyConnectionSendDatagramCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
+}
+
+// SetCongestionControl mocks base method.
+func (m *MockEarlyConnection) SetCongestionControl(arg0 congestion.CongestionControl) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetCongestionControl", arg0)
+}
+
+// SetCongestionControl indicates an expected call of SetCongestionControl.
+func (mr *MockEarlyConnectionMockRecorder) SetCongestionControl(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCongestionControl", reflect.TypeOf((*MockEarlyConnection)(nil).SetCongestionControl), arg0)
 }

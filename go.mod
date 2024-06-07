@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/francoispqt/gojay v1.2.13
+	github.com/golang/mock v1.2.0
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.6
 	github.com/prometheus/client_golang v1.19.1
