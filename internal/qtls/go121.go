@@ -1,3 +1,5 @@
+//go:build go1.21
+
 package qtls
 
 import (
@@ -9,7 +11,48 @@ import (
 	"github.com/quic-go/quic-go/internal/protocol"
 )
 
+type (
+	QUICConn                 = tls.QUICConn
+	QUICConfig               = tls.QUICConfig
+	QUICEvent                = tls.QUICEvent
+	QUICEventKind            = tls.QUICEventKind
+	QUICEncryptionLevel      = tls.QUICEncryptionLevel
+	QUICSessionTicketOptions = tls.QUICSessionTicketOptions
+	AlertError               = tls.AlertError
+)
+
+const (
+	QUICEncryptionLevelInitial     = tls.QUICEncryptionLevelInitial
+	QUICEncryptionLevelEarly       = tls.QUICEncryptionLevelEarly
+	QUICEncryptionLevelHandshake   = tls.QUICEncryptionLevelHandshake
+	QUICEncryptionLevelApplication = tls.QUICEncryptionLevelApplication
+)
+
+const (
+	QUICNoEvent                     = tls.QUICNoEvent
+	QUICSetReadSecret               = tls.QUICSetReadSecret
+	QUICSetWriteSecret              = tls.QUICSetWriteSecret
+	QUICWriteData                   = tls.QUICWriteData
+	QUICTransportParameters         = tls.QUICTransportParameters
+	QUICTransportParametersRequired = tls.QUICTransportParametersRequired
+	QUICRejectedEarlyData           = tls.QUICRejectedEarlyData
+	QUICHandshakeDone               = tls.QUICHandshakeDone
+)
+
+func QUICServer(config *QUICConfig) *QUICConn { return tls.QUICServer(config) }
+func QUICClient(config *QUICConfig) *QUICConn { return tls.QUICClient(config) }
+
 func SetupConfigForServer(
+	qconf *tls.QUICConfig,
+	localAddr, remoteAddr net.Addr,
+	_ bool,
+	getData func() []byte,
+	handleSessionTicket func([]byte, bool) bool,
+) {
+	qconf.TLSConfig = setupConfigForServer(qconf.TLSConfig, localAddr, remoteAddr, getData, handleSessionTicket)
+}
+
+func setupConfigForServer(
 	conf *tls.Config,
 	localAddr, remoteAddr net.Addr,
 	getData func() []byte,
@@ -71,7 +114,7 @@ func SetupConfigForServer(
 			c, err := gcfc(info)
 			if c != nil {
 				// We're returning a tls.Config here, so we need to apply this recursively.
-				c = SetupConfigForServer(c, localAddr, remoteAddr, getData, handleSessionTicket)
+				c = setupConfigForServer(c, localAddr, remoteAddr, getData, handleSessionTicket)
 			}
 			return c, err
 		}
@@ -87,7 +130,7 @@ func SetupConfigForServer(
 }
 
 func SetupConfigForClient(
-	qconf *tls.QUICConfig,
+	qconf *QUICConfig,
 	getData func(earlyData bool) []byte,
 	setData func(data []byte, earlyData bool) (allowEarlyData bool),
 ) {
@@ -147,4 +190,14 @@ func findExtraData(extras [][]byte) []byte {
 		return extra[len(prefix):]
 	}
 	return nil
+}
+
+func SendSessionTicket(c *QUICConn, allow0RTT bool) error {
+	return c.SendSessionTicket(tls.QUICSessionTicketOptions{
+		EarlyData: allow0RTT,
+	})
+}
+
+func InitSessionTicket(config *tls.Config) {
+	_, _ = config.DecryptTicket(nil, tls.ConnectionState{})
 }

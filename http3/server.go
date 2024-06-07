@@ -19,6 +19,7 @@ import (
 	"github.com/quic-go/qpack"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/quic-go/quic-go/internal/qtls"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -98,7 +99,7 @@ func ConfigureTLSConfig(tlsConf *tls.Config) *tls.Config {
 			}
 			// Workaround for https://github.com/golang/go/issues/60506.
 			// This initializes the session tickets _before_ cloning the config.
-			_, _ = config.DecryptTicket(nil, tls.ConnectionState{})
+			qtls.InitSessionTicket(config)
 
 			config = config.Clone()
 			config.NextProtos = []string{proto}
