@@ -22,7 +22,7 @@ const (
 
 const ecnIPv4DataLen = 4
 
-const desiredBufferSize = 7 << 20 // 7 MiB
+const desiredBufferSize = 8 << 20 // 8 MiB
 
 // ReadBatch only returns a single packet on OSX,
 // see https://godoc.org/golang.org/x/net/ipv4#PacketConn.ReadBatch.

@@ -6,7 +6,7 @@ import "time"
 const InitialPacketSize = 1280
 
 // MaxCongestionWindowPackets is the maximum congestion window in packet.
-const MaxCongestionWindowPackets = 10000
+const MaxCongestionWindowPackets = 20000
 
 // MaxUndecryptablePackets limits the number of undecryptable packets that are queued in the connection.
 const MaxUndecryptablePackets = 32
@@ -16,7 +16,7 @@ const MaxUndecryptablePackets = 32
 const ConnectionFlowControlMultiplier = 1.5
 
 // DefaultInitialMaxStreamData is the default initial stream-level flow control window for receiving data
-const DefaultInitialMaxStreamData = (1 << 10) * 512 // 512 kb
+const DefaultInitialMaxStreamData = (1 << 20) * 2 // 2 MB
 
 // DefaultInitialMaxData is the connection-level flow control window for receiving data
 const DefaultInitialMaxData = ConnectionFlowControlMultiplier * DefaultInitialMaxStreamData

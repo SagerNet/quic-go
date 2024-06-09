@@ -12,7 +12,7 @@ import (
 const (
 	// maxStreamFrameSorterGaps is the maximum number of gaps in the received data.
 	// It protects against DoS attacks.
-	maxStreamFrameSorterGaps = 4096
+	maxStreamFrameSorterGaps = 20000
 	// maxGapChunkLen is the maximum number of gaps in a chunk of frameSorter.gaps.
 	maxGapChunkLen = 64
 )

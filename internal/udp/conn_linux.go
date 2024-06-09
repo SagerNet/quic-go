@@ -190,4 +190,4 @@ func IsSendMsgSizeErr(err error) bool {
 
 func IsRecvMsgSizeErr(error) bool { return false }
 
-const desiredBufferSize = 7 << 20 // 7 MiB
+const desiredBufferSize = 8 << 20 // 8 MiB

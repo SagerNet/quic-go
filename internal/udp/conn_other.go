@@ -13,4 +13,4 @@ func newConn(c net.PacketConn, supportsDF bool) (*basicConn, error) {
 func inspectReadBuffer(any) (int, error)  { return 0, nil }
 func inspectWriteBuffer(any) (int, error) { return 0, nil }
 
-const desiredBufferSize = 7 << 20 // 7 MiB
+const desiredBufferSize = 8 << 20 // 8 MiB
