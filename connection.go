@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/quic-go/quic-go/congestion"
 	"github.com/quic-go/quic-go/internal/ackhandler"
 	"github.com/quic-go/quic-go/internal/flowcontrol"
 	"github.com/quic-go/quic-go/internal/handshake"
@@ -2707,4 +2708,9 @@ func (c *Conn) NextConnection(ctx context.Context) (*Conn, error) {
 // connection ID length), and the size of the encryption tag.
 func estimateMaxPayloadSize(mtu protocol.ByteCount) protocol.ByteCount {
 	return mtu - 1 /* type byte */ - 20 /* maximum connection ID length */ - 16 /* tag size */
+}
+
+// SetCongestionControl replace the current congestion control algorithm with a new one.
+func (c *Conn) SetCongestionControl(cc congestion.CongestionControl) {
+	c.sentPacketHandler.SetCongestionControl(cc)
 }
