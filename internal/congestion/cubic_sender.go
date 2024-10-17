@@ -282,19 +282,6 @@ func (c *cubicSender) OnRetransmissionTimeout(packetsRetransmitted bool) {
 	c.congestionWindow = c.minCongestionWindow()
 }
 
-// OnConnectionMigration is called when the connection is migrated (?)
-func (c *cubicSender) OnConnectionMigration() {
-	c.hybridSlowStart.Restart()
-	c.largestSentPacketNumber = protocol.InvalidPacketNumber
-	c.largestAckedPacketNumber = protocol.InvalidPacketNumber
-	c.largestSentAtLastCutback = protocol.InvalidPacketNumber
-	c.lastCutbackExitedSlowstart = false
-	c.cubic.Reset()
-	c.numAckedPackets = 0
-	c.congestionWindow = c.initialCongestionWindow
-	c.slowStartThreshold = c.initialMaxCongestionWindow
-}
-
 func (c *cubicSender) maybeTraceStateChange(new logging.CongestionState) {
 	if c.tracer == nil || c.tracer.UpdatedCongestionState == nil || new == c.lastState {
 		return

@@ -61,9 +61,7 @@ type RTTStatsProvider interface {
 	MeanDeviation() time.Duration
 	MaxAckDelay() time.Duration
 	PTO(includeMaxAckDelay bool) time.Duration
-	UpdateRTT(sendDelta, ackDelay time.Duration, now time.Time)
+	UpdateRTT(sendDelta, ackDelay time.Duration)
 	SetMaxAckDelay(mad time.Duration)
 	SetInitialRTT(t time.Duration)
-	OnConnectionMigration()
-	ExpireSmoothedMetrics()
 }
