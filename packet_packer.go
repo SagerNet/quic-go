@@ -7,13 +7,12 @@ import (
 	"fmt"
 	"time"
 
-	"golang.org/x/exp/rand"
-
 	"github.com/quic-go/quic-go/internal/ackhandler"
 	"github.com/quic-go/quic-go/internal/handshake"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/wire"
+	"golang.org/x/exp/rand"
 )
 
 var errNothingToPack = errors.New("nothing to pack")
