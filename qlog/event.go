@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/francoispqt/gojay"
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/logging"
 )
 
 func milliseconds(dur time.Duration) float64 { return float64(dur.Nanoseconds()) / 1e6 }

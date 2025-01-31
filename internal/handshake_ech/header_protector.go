@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/internal/protocol"
 	"github.com/sagernet/cloudflare-tls"
 	"golang.org/x/crypto/chacha20"
 )

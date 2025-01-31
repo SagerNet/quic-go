@@ -9,8 +9,8 @@ import (
 	"net/http/httptrace"
 
 	"github.com/quic-go/qpack"
-	"github.com/quic-go/quic-go/ech"
-	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/ech"
+	"github.com/sagernet/quic-go/internal/protocol"
 )
 
 // A Stream is an HTTP/3 request stream.

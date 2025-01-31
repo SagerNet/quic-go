@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/internal/protocol"
 )
 
 type (

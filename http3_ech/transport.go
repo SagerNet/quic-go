@@ -12,8 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/quic-go/quic-go/ech"
-	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/ech"
+	"github.com/sagernet/quic-go/internal/protocol"
 	"github.com/sagernet/cloudflare-tls"
 	"golang.org/x/exp/slog"
 	"golang.org/x/net/http/httpguts"

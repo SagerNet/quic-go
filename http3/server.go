@@ -16,11 +16,11 @@ import (
 	"time"
 
 	"github.com/quic-go/qpack"
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/internal/qtls"
-	"github.com/quic-go/quic-go/internal/utils"
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/internal/qtls"
+	"github.com/sagernet/quic-go/internal/utils"
+	"github.com/sagernet/quic-go/quicvarint"
 	"golang.org/x/exp/slog"
 )
 

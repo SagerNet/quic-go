@@ -1,8 +1,8 @@
 package quic
 
 import (
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/internal/qerr"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/internal/qerr"
 )
 
 type (

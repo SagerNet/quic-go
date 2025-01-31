@@ -9,7 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/quic-go/qtls-go1-20"
-	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/internal/protocol"
 )
 
 type (

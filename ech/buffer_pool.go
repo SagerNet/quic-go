@@ -1,7 +1,7 @@
 package quic
 
 import (
-	"github.com/quic-go/quic-go"
+	"github.com/sagernet/quic-go"
 )
 
 type packetBuffer = quic.PacketBuffer

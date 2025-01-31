@@ -6,8 +6,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/quic-go/quic-go/ech"
-	"github.com/quic-go/quic-go/internal/utils"
+	"github.com/sagernet/quic-go/ech"
+	"github.com/sagernet/quic-go/internal/utils"
 )
 
 var _ quic.Stream = &stateTrackingStream{}
