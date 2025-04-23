@@ -203,3 +203,20 @@ func addrsEqual(addr1, addr2 net.Addr) bool {
 	}
 	return addr1.String() == addr2.String()
 }
+
+func ipEqual(addr1, addr2 net.Addr) bool {
+	if addr1 == nil || addr2 == nil {
+		return false
+	}
+	a1, ok1 := addr1.(*net.UDPAddr)
+	a2, ok2 := addr2.(*net.UDPAddr)
+	if ok1 && ok2 {
+		return a1.IP.Equal(a2.IP)
+	}
+	host1, _, err1 := net.SplitHostPort(addr1.String())
+	host2, _, err2 := net.SplitHostPort(addr2.String())
+	if err1 == nil && err2 == nil {
+		return host1 == host2
+	}
+	return addr1.String() == addr2.String()
+}
