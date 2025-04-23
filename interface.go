@@ -193,6 +193,10 @@ type Config struct {
 	Tracer func(ctx context.Context, isClient bool, connID ConnectionID) qlogwriter.Trace
 
 	MaxDatagramFrameSize int64
+
+	// DisablePathManager disables path manager.
+	// for hysteria2 port hopping, direct change remote address without connection migration logic
+	DisablePathManager bool
 }
 
 // ClientHelloInfo contains information about an incoming connection attempt.
