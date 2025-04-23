@@ -1079,6 +1079,11 @@ func (c *Conn) handleShortHeaderPacket(p receivedPacket, isCoalesced bool) (wasP
 	if addrsEqual(p.remoteAddr, c.RemoteAddr()) {
 		return true, nil
 	}
+	if c.config.DisablePathManager {
+		// for hysteria2 port hopping, direct change remote address without connection migration logic
+		c.conn.ChangeRemoteAddr(p.remoteAddr, p.info)
+		return true, nil
+	}
 
 	var shouldSwitchPath bool
 	if c.pathManager == nil {
