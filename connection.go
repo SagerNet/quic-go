@@ -1099,6 +1099,13 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, isCoalesced bool)
 		return true, nil
 	}
 	s.pathManager.SwitchToPath(p.remoteAddr)
+
+	if ipEqual(p.remoteAddr, s.RemoteAddr()) {
+		// only port is different, direct change remote addr don't reset internal state
+		s.conn.ChangeRemoteAddr(p.remoteAddr, p.info)
+		return true, nil
+	}
+
 	s.sentPacketHandler.MigratedPath(p.rcvTime, protocol.ByteCount(s.config.InitialPacketSize))
 	maxPacketSize := protocol.ByteCount(protocol.MaxPacketBufferSize)
 	if s.peerParams.MaxUDPPayloadSize > 0 && s.peerParams.MaxUDPPayloadSize < maxPacketSize {
