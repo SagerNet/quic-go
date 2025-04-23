@@ -1253,7 +1253,7 @@ func (c *Conn) handleShortHeaderPacket(
 	// Only the client can migrate between paths, so only the server receives packets from different addresses.
 	// The path is created before handling the frames, so that the packet can be logged with the path's tuple.
 	checkPath := c.perspective == protocol.PerspectiveServer && !addrsEqual(p.remoteAddr, c.RemoteAddr())
-	if checkPath {
+	if checkPath && !c.config.DisablePathManager {
 		if c.pathManager == nil {
 			c.pathManager = newPathManager(
 				c.connIDManager.GetConnIDForPath,
@@ -1305,6 +1305,25 @@ func (c *Conn) handleShortHeaderPacket(
 	}
 
 	if !checkPath {
+		return true, nil
+	}
+	if c.config.DisablePathManager {
+		// for hysteria2 port hopping, direct change remote address without connection migration logic
+		if pathChallenge != nil {
+			resp := ackhandler.Frame{Frame: &wire.PathResponseFrame{Data: pathChallenge.Data}, Handler: emptyHandler{}}
+			probe, buf, err := c.packer.PackPathProbePacket(c.connIDManager.Get(), []ackhandler.Frame{resp}, c.version)
+			if err != nil {
+				return true, err
+			}
+			c.logShortHeaderPacketWithDatagramPayloadChecksum(probe, protocol.ECNNon, buf.Len(), false, datagramPayloadChecksum, "")
+			c.registerPackedShortHeaderPacket(probe, protocol.ECNNon, p.rcvTime)
+			c.sendQueue.SendProbe(buf, p.remoteAddr, p.info)
+		}
+		// We only switch paths in response to the highest-numbered non-probing packet,
+		// see section 9.3 of RFC 9000.
+		if isNonProbing && pn == c.largestRcvdAppData {
+			c.conn.ChangeRemoteAddr(p.remoteAddr, p.info)
+		}
 		return true, nil
 	}
 	destConnID, frames, shouldSwitchPath := c.pathManager.HandlePacket(p.remoteAddr, p.rcvTime, pathChallenge, isNonProbing)
