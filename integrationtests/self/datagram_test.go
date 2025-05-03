@@ -110,17 +110,17 @@ func TestDatagramSizeLimit(t *testing.T) {
 	require.Error(t, err)
 	var sizeErr *quic.DatagramTooLargeError
 	require.ErrorAs(t, err, &sizeErr)
-	require.InDelta(t, sizeErr.MaxDatagramPayloadSize, maxDatagramSize, 10)
+	require.InDelta(t, sizeErr.MaxDataLen, maxDatagramSize, 10)
 
-	require.NoError(t, clientConn.SendDatagram(bytes.Repeat([]byte("b"), int(sizeErr.MaxDatagramPayloadSize))))
-	require.Error(t, clientConn.SendDatagram(bytes.Repeat([]byte("c"), int(sizeErr.MaxDatagramPayloadSize+1))))
+	require.NoError(t, clientConn.SendDatagram(bytes.Repeat([]byte("b"), int(sizeErr.MaxDataLen))))
+	require.Error(t, clientConn.SendDatagram(bytes.Repeat([]byte("c"), int(sizeErr.MaxDataLen+1))))
 
 	serverConn, err := server.Accept(ctx)
 	require.NoError(t, err)
 	defer serverConn.CloseWithError(0, "")
 	datagram, err := serverConn.ReceiveDatagram(ctx)
 	require.NoError(t, err)
-	require.Equal(t, bytes.Repeat([]byte("b"), int(sizeErr.MaxDatagramPayloadSize)), datagram)
+	require.Equal(t, bytes.Repeat([]byte("b"), int(sizeErr.MaxDataLen)), datagram)
 }
 
 func TestDatagramLoss(t *testing.T) {

@@ -107,17 +107,17 @@ func TestFrameSorterGapHandling(t *testing.T) {
 	}
 
 	checkGaps := func(t *testing.T, s *frameSorter, expectedGaps []byteInterval) {
-		if s.gaps.Len() != len(expectedGaps) {
+		// Get all gaps from the gapTree as a sorted slice.
+		gaps := s.gapTree.Values()
+		if len(gaps) != len(expectedGaps) {
 			fmt.Println("Gaps:")
-			for gap := s.gaps.Front(); gap != nil; gap = gap.Next() {
-				fmt.Printf("\t%d - %d\n", gap.Value.Start, gap.Value.End)
+			for _, gap := range gaps {
+				fmt.Printf("\t%d - %d\n", gap.Start, gap.End)
 			}
-			require.Equal(t, len(expectedGaps), s.gaps.Len())
+			require.Equal(t, len(expectedGaps), len(gaps))
 		}
-		var i int
-		for gap := s.gaps.Front(); gap != nil; gap = gap.Next() {
-			require.Equal(t, expectedGaps[i], gap.Value)
-			i++
+		for i, gap := range gaps {
+			require.Equal(t, expectedGaps[i], byteInterval{Start: gap.Start, End: gap.End})
 		}
 	}
 
@@ -1371,7 +1371,7 @@ func TestFrameSorterTooManyGaps(t *testing.T) {
 	for i := 0; i < protocol.MaxStreamFrameSorterGaps; i++ {
 		require.NoError(t, s.Push([]byte("foobar"), protocol.ByteCount(i*7), nil))
 	}
-	require.Equal(t, protocol.MaxStreamFrameSorterGaps, s.gaps.Len())
+	require.Equal(t, protocol.MaxStreamFrameSorterGaps, s.gapTree.Len())
 	err := s.Push([]byte("foobar"), protocol.ByteCount(protocol.MaxStreamFrameSorterGaps*7)+100, nil)
 	require.EqualError(t, err, "too many gaps in received data")
 }
@@ -1449,8 +1449,9 @@ func testFrameSorterRandomized(t *testing.T, dataLen protocol.ByteCount, injectD
 			callbacks = append(callbacks, tr)
 		}
 	}
-	require.Equal(t, 1, s.gaps.Len())
-	require.Equal(t, byteInterval{Start: num * dataLen, End: protocol.MaxByteCount}, s.gaps.Front().Value)
+	require.Equal(t, 1, s.gapTree.Len())
+	head := s.gapTree.Head()
+	require.Equal(t, byteInterval{Start: num * dataLen, End: protocol.MaxByteCount}, byteInterval{Start: head.Start, End: head.End})
 
 	// read all data
 	var read []byte
