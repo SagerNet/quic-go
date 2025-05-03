@@ -14,10 +14,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"golang.org/x/net/http/httpguts"
-
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
+	"golang.org/x/net/http/httpguts"
 )
 
 // Settings are HTTP/3 settings that apply to the underlying connection.
