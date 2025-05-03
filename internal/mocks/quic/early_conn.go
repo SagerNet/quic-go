@@ -15,6 +15,7 @@ import (
 	reflect "reflect"
 
 	quic "github.com/quic-go/quic-go"
+	congestion "github.com/quic-go/quic-go/congestion"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -655,6 +656,42 @@ func (c *MockEarlyConnectionSendDatagramCall) Do(f func([]byte) error) *MockEarl
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockEarlyConnectionSendDatagramCall) DoAndReturn(f func([]byte) error) *MockEarlyConnectionSendDatagramCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// SetCongestionControl mocks base method.
+func (m *MockEarlyConnection) SetCongestionControl(arg0 congestion.CongestionControl) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetCongestionControl", arg0)
+}
+
+// SetCongestionControl indicates an expected call of SetCongestionControl.
+func (mr *MockEarlyConnectionMockRecorder) SetCongestionControl(arg0 any) *MockEarlyConnectionSetCongestionControlCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCongestionControl", reflect.TypeOf((*MockEarlyConnection)(nil).SetCongestionControl), arg0)
+	return &MockEarlyConnectionSetCongestionControlCall{Call: call}
+}
+
+// MockEarlyConnectionSetCongestionControlCall wrap *gomock.Call
+type MockEarlyConnectionSetCongestionControlCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockEarlyConnectionSetCongestionControlCall) Return() *MockEarlyConnectionSetCongestionControlCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockEarlyConnectionSetCongestionControlCall) Do(f func(congestion.CongestionControl)) *MockEarlyConnectionSetCongestionControlCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockEarlyConnectionSetCongestionControlCall) DoAndReturn(f func(congestion.CongestionControl)) *MockEarlyConnectionSetCongestionControlCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

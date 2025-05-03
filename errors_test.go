@@ -26,12 +26,12 @@ func TestStreamError(t *testing.T) {
 
 func TestDatagramTooLargeError(t *testing.T) {
 	require.True(t, errors.Is(
-		&DatagramTooLargeError{MaxDatagramPayloadSize: 1024},
-		&DatagramTooLargeError{MaxDatagramPayloadSize: 1024},
+		&DatagramTooLargeError{MaxDataLen: 1024},
+		&DatagramTooLargeError{MaxDataLen: 1024},
 	))
 	require.False(t, errors.Is(
-		&DatagramTooLargeError{MaxDatagramPayloadSize: 1024},
-		&DatagramTooLargeError{MaxDatagramPayloadSize: 1025},
+		&DatagramTooLargeError{MaxDataLen: 1024},
+		&DatagramTooLargeError{MaxDataLen: 1025},
 	))
-	require.Equal(t, "DATAGRAM frame too large", (&DatagramTooLargeError{MaxDatagramPayloadSize: 1024}).Error())
+	require.Equal(t, "DATAGRAM frame too large", (&DatagramTooLargeError{MaxDataLen: 1024}).Error())
 }

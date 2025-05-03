@@ -130,7 +130,7 @@ func TestPathMTUDiscovery(t *testing.T) {
 	require.Error(t, err)
 	var datagramErr *quic.DatagramTooLargeError
 	require.ErrorAs(t, err, &datagramErr)
-	initialMaxDatagramSize := datagramErr.MaxDatagramPayloadSize
+	initialMaxDatagramSize := datagramErr.MaxDataLen
 
 	str, err := conn.OpenStream()
 	require.NoError(t, err)
@@ -165,7 +165,7 @@ func TestPathMTUDiscovery(t *testing.T) {
 	err = conn.SendDatagram(make([]byte, 2000))
 	require.Error(t, err)
 	require.ErrorAs(t, err, &datagramErr)
-	finalMaxDatagramSize := datagramErr.MaxDatagramPayloadSize
+	finalMaxDatagramSize := datagramErr.MaxDataLen
 
 	mx.Lock()
 	defer mx.Unlock()
