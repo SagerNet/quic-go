@@ -337,6 +337,10 @@ type Config struct {
 	Tracer          func(context.Context, logging.Perspective, ConnectionID) *logging.ConnectionTracer
 
 	MaxDatagramFrameSize int64
+
+	// DisablePathManager disables path manager.
+	// for hysteria2 port hopping, direct change remote address without connection migration logic
+	DisablePathManager bool
 }
 
 // ClientHelloInfo contains information about an incoming connection attempt.
