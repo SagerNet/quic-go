@@ -13,11 +13,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/quic-go/qpack"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/quicvarint"
-
-	"github.com/quic-go/qpack"
 )
 
 var errGoAway = errors.New("connection in graceful shutdown")
