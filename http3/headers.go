@@ -9,9 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/net/http/httpguts"
-
 	"github.com/quic-go/qpack"
+	"golang.org/x/net/http/httpguts"
 )
 
 type header struct {
