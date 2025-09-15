@@ -18,3 +18,7 @@ fuzzing/*/corpus/
 **/testdata/fuzz/
 
 gomock_reflect_*/
+
+.idea/
+.DS_Store
+
