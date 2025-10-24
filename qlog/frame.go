@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/francoispqt/gojay"
-	"github.com/quic-go/quic-go/internal/wire"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/sagernet/quic-go/internal/wire"
+	"github.com/sagernet/quic-go/logging"
 )
 
 type frame struct {

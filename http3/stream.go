@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/quic-go/qpack"
-	"github.com/quic-go/quic-go"
+	"github.com/sagernet/quic-go"
 )
 
 type datagramStream interface {

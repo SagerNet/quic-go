@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/francoispqt/gojay"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/sagernet/quic-go/logging"
 )
 
 // Setting of this only works when quic-go is used as a library.
