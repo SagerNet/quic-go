@@ -4,9 +4,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/quic-go/quic-go/logging"
-
 	"github.com/francoispqt/gojay"
+	"github.com/quic-go/quic-go/logging"
 )
 
 // Setting of this only works when quic-go is used as a library.
