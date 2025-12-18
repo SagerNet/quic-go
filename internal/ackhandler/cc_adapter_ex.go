@@ -67,3 +67,11 @@ func (a *ccAdapterEx) InRecovery() bool {
 func (a *ccAdapterEx) GetCongestionWindow() protocol.ByteCount {
 	return protocol.ByteCount(a.CC.GetCongestionWindow())
 }
+
+func (a *ccAdapterEx) OnPacketsLost(leastUnacked protocol.PacketNumber) {
+	a.CC.OnPacketsLost(congestion.PacketNumber(leastUnacked))
+}
+
+func (a *ccAdapterEx) OnAppLimited(bytesInFlight protocol.ByteCount) {
+	a.CC.OnAppLimited(congestion.ByteCount(bytesInFlight))
+}

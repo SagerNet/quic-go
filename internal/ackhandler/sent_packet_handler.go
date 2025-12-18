@@ -467,6 +467,11 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 	if cex, ok := h.getCongestionControl().(congestion.SendAlgorithmEx); ok &&
 		(len(h.ackedPacketsInfo) != 0 || len(h.lostPacketsInfo) != 0) {
 		cex.OnCongestionEventEx(priorInFlight, rcvTime, h.ackedPacketsInfo, h.lostPacketsInfo)
+		// Notify the congestion controller about the lowest unacked packet number
+		// to allow cleanup of obsolete packet state data.
+		if lowestUnacked := h.appDataPackets.history.LowestPacketNumber(); lowestUnacked != protocol.InvalidPacketNumber {
+			cex.OnPacketsLost(lowestUnacked)
+		}
 	}
 
 	// detect spurious losses for application data packets, if the ACK was not reordered
@@ -1193,4 +1198,14 @@ func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionCont
 		h.congestion = &ccAdapter{cc}
 	}
 	h.congestionMutex.Unlock()
+}
+
+func (h *sentPacketHandler) MaybeNotifyAppLimited() {
+	cc := h.getCongestionControl()
+	// Only notify if cwnd still has room (true app-limited condition)
+	if cc.CanSend(h.bytesInFlight) {
+		if cex, ok := cc.(congestion.SendAlgorithmEx); ok {
+			cex.OnAppLimited(h.bytesInFlight)
+		}
+	}
 }
