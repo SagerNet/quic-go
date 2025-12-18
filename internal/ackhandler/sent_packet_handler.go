@@ -453,6 +453,7 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 			h.ackedPacketsInfo = append(h.ackedPacketsInfo, congestionExt.AckedPacketInfo{
 				PacketNumber: congestionExt.PacketNumber(p.PacketNumber),
 				BytesAcked:   congestionExt.ByteCount(p.Length),
+				SentTime:     p.SendTime,
 			})
 		}
 		if p.EncryptionLevel == protocol.Encryption1RTT {
