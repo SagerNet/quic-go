@@ -567,6 +567,7 @@ func (h *sentPacketHandler) receivedAck(ack *wire.AckFrame, encLevel protocol.En
 				h.ackedPacketsInfo = append(h.ackedPacketsInfo, congestionExt.AckedPacketInfo{
 					PacketNumber: congestionExt.PacketNumber(p.PacketNumber),
 					BytesAcked:   congestionExt.ByteCount(p.Length),
+					SentTime:     p.SendTime,
 				})
 			} else {
 				h.congestion.OnPacketAcked(p.PacketNumber, priorInFlight)
