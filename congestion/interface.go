@@ -53,6 +53,11 @@ type CongestionControl interface {
 type CongestionControlEx interface {
 	CongestionControl
 	OnCongestionEventEx(priorInFlight ByteCount, eventTime monotime.Time, ackedPackets []AckedPacketInfo, lostPackets []LostPacketInfo)
+	// OnPacketsLost is called to notify the congestion controller about the lowest unacked packet number.
+	// This allows cleanup of obsolete packet state data.
+	OnPacketsLost(leastUnacked PacketNumber)
+	// OnAppLimited is called when the application has no data to send but cwnd is not fully utilized.
+	OnAppLimited(bytesInFlight ByteCount)
 }
 
 type RTTStatsProvider interface {
