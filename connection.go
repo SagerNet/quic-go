@@ -372,6 +372,11 @@ var newConnection = func(
 	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.initialStream, s.handshakeStream, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
 	s.cryptoStreamManager = newCryptoStreamManager(s.initialStream, s.handshakeStream, s.oneRTTStream)
+	if conf.GetCongestionControl != nil {
+		if cc := conf.GetCongestionControl(s); cc != nil {
+			s.SetCongestionControl(cc)
+		}
+	}
 	return &wrappedConn{Conn: s}
 }
 
@@ -507,6 +512,11 @@ var newClientConnection = func(
 		if token := s.config.TokenStore.Pop(s.tokenStoreKey); token != nil {
 			s.packer.SetToken(token.data)
 			s.rttStats.SetInitialRTT(token.rtt)
+		}
+	}
+	if conf.GetCongestionControl != nil {
+		if cc := conf.GetCongestionControl(s); cc != nil {
+			s.SetCongestionControl(cc)
 		}
 	}
 	return &wrappedConn{Conn: s}

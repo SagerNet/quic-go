@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/sagernet/quic-go/congestion"
 	"github.com/sagernet/quic-go/internal/handshake"
 	"github.com/sagernet/quic-go/internal/protocol"
 	"github.com/sagernet/quic-go/qlogwriter"
@@ -197,6 +198,11 @@ type Config struct {
 	// DisablePathManager disables path manager.
 	// for hysteria2 port hopping, direct change remote address without connection migration logic
 	DisablePathManager bool
+
+	// GetCongestionControl is called when a new connection is created.
+	// If set, the returned CongestionControl will be used for the connection.
+	// The conn parameter provides connection info (e.g., InitialPacketSize).
+	GetCongestionControl func(conn *Conn) congestion.CongestionControl
 }
 
 // ClientHelloInfo contains information about an incoming connection attempt.
