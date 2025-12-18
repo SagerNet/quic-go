@@ -39,4 +39,8 @@ type SentPacketHandler interface {
 	MigratedPath(now monotime.Time, initialMaxPacketSize protocol.ByteCount)
 
 	SetCongestionControl(congestion.CongestionControl)
+
+	// MaybeNotifyAppLimited notifies the congestion controller that the application
+	// has no more data to send, if the cwnd is not fully utilized.
+	MaybeNotifyAppLimited()
 }

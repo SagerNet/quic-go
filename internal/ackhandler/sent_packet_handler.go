@@ -584,6 +584,11 @@ func (h *sentPacketHandler) receivedAck(ack *wire.AckFrame, encLevel protocol.En
 
 	if cc != nil && cc.extended != nil && (len(h.ackedPacketsInfo) != 0 || len(h.lostPacketsInfo) != 0) {
 		cc.extended.OnCongestionEventEx(congestionExt.ByteCount(priorInFlight), rcvTime, h.ackedPacketsInfo, h.lostPacketsInfo)
+		// Notify the congestion controller about the lowest unacked packet number
+		// to allow cleanup of obsolete packet state data.
+		if lowestUnacked := h.hist.FirstPacketNumber(); lowestUnacked != protocol.InvalidPacketNumber {
+			cc.extended.OnPacketsLost(congestionExt.PacketNumber(lowestUnacked))
+		}
 	}
 
 	// After this point, we must not use ackedPackets any longer!
@@ -1382,4 +1387,12 @@ func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionCont
 	h.injectedCongestionMutex.Lock()
 	h.injectedCongestion = installed
 	h.injectedCongestionMutex.Unlock()
+}
+
+func (h *sentPacketHandler) MaybeNotifyAppLimited() {
+	cc := h.getInjectedCongestionControl()
+	// Only notify if cwnd still has room (true app-limited condition)
+	if cc != nil && cc.extended != nil && cc.CanSend(congestionExt.ByteCount(h.bytesInFlight)) {
+		cc.extended.OnAppLimited(congestionExt.ByteCount(h.bytesInFlight))
+	}
 }
