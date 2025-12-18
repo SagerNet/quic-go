@@ -26,6 +26,7 @@ type AckedPacketInfo struct {
 	PacketNumber PacketNumber
 	BytesAcked   ByteCount
 	ReceivedTime monotime.Time
+	SentTime     monotime.Time
 }
 
 type LostPacketInfo struct {
