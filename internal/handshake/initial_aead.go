@@ -4,9 +4,8 @@ import (
 	"crypto"
 	"crypto/tls"
 
-	"golang.org/x/crypto/hkdf"
-
 	"github.com/quic-go/quic-go/internal/protocol"
+	"golang.org/x/crypto/hkdf"
 )
 
 var (

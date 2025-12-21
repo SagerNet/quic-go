@@ -12,7 +12,6 @@ import (
 
 	"github.com/quic-go/qpack"
 	"github.com/quic-go/quic-go/http3/qlog"
-
 	"golang.org/x/net/http/httpguts"
 )
 
