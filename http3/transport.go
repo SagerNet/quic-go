@@ -15,7 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/quic-go/quic-go"
+	"github.com/sagernet/quic-go"
 	"golang.org/x/net/http/httpguts"
 )
 
