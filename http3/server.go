@@ -19,6 +19,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3/qlog"
 	"github.com/quic-go/quic-go/qlogwriter"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 // NextProtoH3 is the ALPN protocol negotiated during the TLS handshake, for QUIC v1 and v2.
@@ -183,6 +184,11 @@ type Server struct {
 	// ReadHeaderTimeout limits the time to read each request's headers.
 	// Zero or negative values disable this timeout.
 	ReadHeaderTimeout time.Duration
+
+	// StreamDispatcher, when set, is called after peeking the first HTTP/3 frame type
+	// on a bidirectional stream. If handled is true, the stream is handed over to the
+	// application and won't be processed by HTTP/3.
+	StreamDispatcher func(FrameType, *quic.Stream, error) (handled bool, err error)
 
 	// IdleTimeout specifies how long until idle clients connection should be
 	// closed. Idle refers only to the HTTP/3 layer, activity at the QUIC layer
@@ -602,6 +608,27 @@ func (s *Server) handleConn(conn *quic.Conn) error {
 		wg.Go(func() {
 			// HandleRequestStream will return once the request has been handled,
 			// or the underlying connection is closed.
+			if s.StreamDispatcher == nil {
+				hconn.HandleRequestStream(str)
+				return
+			}
+			if s.ReadHeaderTimeout > 0 {
+				_ = str.SetReadDeadline(time.Now().Add(s.ReadHeaderTimeout))
+			}
+			frameType, err := quicvarint.Peek(str)
+			if s.ReadHeaderTimeout > 0 {
+				_ = str.SetReadDeadline(time.Time{})
+			}
+			handled, dispatchErr := s.StreamDispatcher(FrameType(frameType), str, err)
+			if dispatchErr != nil {
+				str.ReleaseStreamCredit()
+				str.CancelRead(quic.StreamErrorCode(ErrCodeRequestIncomplete))
+				str.CancelWrite(quic.StreamErrorCode(ErrCodeRequestIncomplete))
+				return
+			}
+			if handled {
+				return
+			}
 			hconn.HandleRequestStream(str)
 		})
 	}
