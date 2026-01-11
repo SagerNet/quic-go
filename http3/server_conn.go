@@ -85,6 +85,12 @@ func (c *RawServerConn) HandleRequestStream(str *quic.Stream) {
 	c.handleRequestStream(hstr)
 }
 
+func (c *RawServerConn) handleRequestStreamWithPrefetch(str *quic.Stream, prefetch []byte) {
+	hstr := c.rawConn.TrackStream(str)
+	hstr.prefetch = prefetch
+	c.handleRequestStream(hstr)
+}
+
 func (c *RawServerConn) requestMaxHeaderBytes() int {
 	if c.maxHeaderBytes <= 0 {
 		return http.DefaultMaxHeaderBytes

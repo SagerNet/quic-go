@@ -25,6 +25,8 @@ type stateTrackingStream struct {
 	hasData      chan struct{}
 	queue        [][]byte // TODO: use a ring buffer
 
+	prefetch []byte
+
 	mx      sync.Mutex
 	sendErr error
 	recvErr error
@@ -106,6 +108,12 @@ func (s *stateTrackingStream) CancelRead(e quic.StreamErrorCode) {
 }
 
 func (s *stateTrackingStream) Read(b []byte) (int, error) {
+	if len(s.prefetch) > 0 {
+		n := copy(b, s.prefetch)
+		s.prefetch = s.prefetch[n:]
+		return n, nil
+	}
+
 	n, err := s.Stream.Read(b)
 	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
 		s.closeReceive(err)
