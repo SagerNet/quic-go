@@ -55,7 +55,7 @@ func wrapConn(pc net.PacketConn) (rawConn, error) {
 	conn, ok := pc.(interface {
 		SyscallConn() (syscall.RawConn, error)
 	})
-	var supportsDF bool
+	var supportsDF bool = true
 	if ok {
 		rawConn, err := conn.SyscallConn()
 		if err != nil {
