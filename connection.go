@@ -357,7 +357,7 @@ var newConnection = func(
 		RetrySourceConnectionID:   retrySrcConnID,
 		EnableResetStreamAt:       conf.EnableStreamResetPartialDelivery,
 	}
-	if s.config.EnableDatagrams {
+	if s.config.EnableDatagrams && !s.config.OmitMaxDatagramFrameSize {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
 		if s.config.MaxDatagramFrameSize != 0 {
 			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
@@ -493,7 +493,7 @@ var newClientConnection = func(
 		InitialSourceConnectionID: srcConnID,
 		EnableResetStreamAt:       conf.EnableStreamResetPartialDelivery,
 	}
-	if s.config.EnableDatagrams {
+	if s.config.EnableDatagrams && !s.config.OmitMaxDatagramFrameSize {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
 		if s.config.MaxDatagramFrameSize != 0 {
 			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
@@ -772,6 +772,16 @@ func (c *Conn) Context() context.Context {
 	return c.ctx
 }
 
+func (c *Conn) peerMaxDatagramFrameSize(params *wire.TransportParameters) protocol.ByteCount {
+	if params.MaxDatagramFrameSize != protocol.InvalidByteCount {
+		return params.MaxDatagramFrameSize
+	}
+	if c.config.EnableDatagrams && c.config.AssumePeerMaxDatagramFrameSize > 0 {
+		return protocol.ByteCount(c.config.AssumePeerMaxDatagramFrameSize)
+	}
+	return protocol.InvalidByteCount
+}
+
 // ConnectionState returns basic details about the QUIC connection.
 func (c *Conn) ConnectionState() ConnectionState {
 	c.connStateMutex.Lock()
@@ -781,7 +791,7 @@ func (c *Conn) ConnectionState() ConnectionState {
 	c.connState.TLS = cs.ConnectionState
 	c.connState.Used0RTT = cs.Used0RTT
 	if p := c.peerParams.Load(); p != nil {
-		c.connState.SupportsDatagrams.Remote = p.MaxDatagramFrameSize > 0
+		c.connState.SupportsDatagrams.Remote = c.peerMaxDatagramFrameSize(p) > 0
 		c.connState.SupportsStreamResetPartialDelivery.Remote = p.EnableResetStreamAt
 	}
 	c.connState.SupportsDatagrams.Local = c.config.EnableDatagrams
@@ -2494,7 +2504,7 @@ func (c *Conn) restoreTransportParameters(params *wire.TransportParameters) {
 	}
 
 	c.peerParams.Store(params)
-	c.packer.SetMaxDatagramFrameSize(params.MaxDatagramFrameSize)
+	c.packer.SetMaxDatagramFrameSize(c.peerMaxDatagramFrameSize(params))
 	// Connection IDs are issued when the handshake completes, since 0-RTT might be rejected.
 	c.framer.UpdateSendWindow(params.InitialMaxData)
 	c.streamsMap.HandleTransportParameters(params)
@@ -2512,7 +2522,7 @@ func (c *Conn) handleTransportParameters(params *wire.TransportParameters) error
 	}
 
 	c.peerParams.Store(params)
-	c.packer.SetMaxDatagramFrameSize(params.MaxDatagramFrameSize)
+	c.packer.SetMaxDatagramFrameSize(c.peerMaxDatagramFrameSize(params))
 	// On the client side we have to wait for handshake completion.
 	// During a 0-RTT connection, we are only allowed to use the new transport parameters for 1-RTT packets.
 	if c.perspective == protocol.PerspectiveServer {
@@ -3211,8 +3221,8 @@ func (c *Conn) recordStreamPriorityUpdated(id protocol.StreamID, urgency int8, i
 // In addition, a datagram may be dropped before being sent out if the available packet size suddenly decreases.
 // If the payload is too large to be sent at the current time, a [DatagramTooLargeError] is returned.
 func (c *Conn) SendDatagram(p []byte) error {
-	params := c.peerParams.Load()
-	if params.MaxDatagramFrameSize <= 0 {
+	maxDatagramFrameSize := c.peerMaxDatagramFrameSize(c.peerParams.Load())
+	if maxDatagramFrameSize <= 0 {
 		return errors.New("datagram support disabled")
 	}
 
@@ -3220,11 +3230,11 @@ func (c *Conn) SendDatagram(p []byte) error {
 	// The payload size estimate is conservative.
 	// Under many circumstances we could send a few more bytes.
 	maxDataLen := min(
-		f.MaxDataLen(params.MaxDatagramFrameSize, c.version),
+		f.MaxDataLen(maxDatagramFrameSize, c.version),
 		protocol.ByteCount(c.maxPayloadSizeEstimate.Load()),
 	)
 	// An empty DATAGRAM frame with a length field is 2 bytes.
-	if protocol.ByteCount(len(p)) > maxDataLen || params.MaxDatagramFrameSize == 1 {
+	if protocol.ByteCount(len(p)) > maxDataLen || maxDatagramFrameSize == 1 {
 		return &DatagramTooLargeError{MaxDatagramPayloadSize: int64(maxDataLen)}
 	}
 	f.Data = make([]byte, len(p))

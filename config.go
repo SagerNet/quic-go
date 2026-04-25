@@ -124,6 +124,8 @@ func populateConfig(config *Config) *Config {
 		RequireStreamCreditRelease:       config.RequireStreamCreditRelease,
 		TokenStore:                       config.TokenStore,
 		EnableDatagrams:                  config.EnableDatagrams,
+		OmitMaxDatagramFrameSize:         config.OmitMaxDatagramFrameSize,
+		AssumePeerMaxDatagramFrameSize:   config.AssumePeerMaxDatagramFrameSize,
 		InitialPacketSize:                config.InitialPacketSize,
 		DisablePathMTUDiscovery:          config.DisablePathMTUDiscovery,
 		EnableStreamResetPartialDelivery: config.EnableStreamResetPartialDelivery,
