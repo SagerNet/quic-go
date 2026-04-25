@@ -348,7 +348,7 @@ var newConnection = func(
 		RetrySourceConnectionID:   retrySrcConnID,
 		EnableResetStreamAt:       conf.EnableStreamResetPartialDelivery,
 	}
-	if s.config.EnableDatagrams {
+	if s.config.EnableDatagrams && !s.config.OmitMaxDatagramFrameSize {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
 		if s.config.MaxDatagramFrameSize != 0 {
 			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
@@ -477,7 +477,7 @@ var newClientConnection = func(
 		InitialSourceConnectionID: srcConnID,
 		EnableResetStreamAt:       conf.EnableStreamResetPartialDelivery,
 	}
-	if s.config.EnableDatagrams {
+	if s.config.EnableDatagrams && !s.config.OmitMaxDatagramFrameSize {
 		params.MaxDatagramFrameSize = wire.MaxDatagramSize
 		if s.config.MaxDatagramFrameSize != 0 {
 			params.MaxDatagramFrameSize = protocol.ByteCount(s.config.MaxDatagramFrameSize)
@@ -774,7 +774,17 @@ func (c *Conn) Context() context.Context {
 }
 
 func (c *Conn) supportsDatagrams() bool {
-	return c.peerParams.MaxDatagramFrameSize > 0
+	return c.peerMaxDatagramFrameSize() > 0
+}
+
+func (c *Conn) peerMaxDatagramFrameSize() protocol.ByteCount {
+	if c.peerParams.MaxDatagramFrameSize > 0 {
+		return c.peerParams.MaxDatagramFrameSize
+	}
+	if c.config.EnableDatagrams && c.config.AssumePeerMaxDatagramFrameSize > 0 {
+		return protocol.ByteCount(c.config.AssumePeerMaxDatagramFrameSize)
+	}
+	return protocol.InvalidByteCount
 }
 
 // ConnectionState returns basic details about the QUIC connection.
@@ -3046,7 +3056,7 @@ func (c *Conn) SendDatagram(p []byte) error {
 	// The payload size estimate is conservative.
 	// Under many circumstances we could send a few more bytes.
 	maxDataLen := min(
-		f.MaxDataLen(c.peerParams.MaxDatagramFrameSize, c.version),
+		f.MaxDataLen(c.peerMaxDatagramFrameSize(), c.version),
 		protocol.ByteCount(c.currentMTUEstimate.Load()),
 	)
 	if protocol.ByteCount(len(p)) > maxDataLen {
