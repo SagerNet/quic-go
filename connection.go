@@ -319,6 +319,7 @@ var newConnection = func(
 		s.conn.capabilities().ECN,
 		s.receivedPacketHandler.IgnorePacketsBelow,
 		s.perspective,
+		false, // servers keep quic-go's 2-byte packet number floor
 		s.qlogger,
 		s.logger,
 	)
@@ -371,7 +372,7 @@ var newConnection = func(
 		s.version,
 	)
 	s.cryptoStreamHandler = cs
-	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.initialStream, s.handshakeStream, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.initialStream, s.handshakeStream, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective, false)
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
 	s.cryptoStreamManager = newCryptoStreamManager(s.initialStream, s.handshakeStream, s.oneRTTStream)
 	return &wrappedConn{Conn: s}
@@ -394,7 +395,7 @@ var newClientConnection = func(
 	qlogTrace qlogwriter.Trace,
 	logger utils.Logger,
 	v protocol.Version,
-) *wrappedConn {
+) (*wrappedConn, error) {
 	s := &Conn{
 		conn:                conn,
 		config:              conf,
@@ -451,6 +452,7 @@ var newClientConnection = func(
 		s.conn.capabilities().ECN,
 		s.receivedPacketHandler.IgnorePacketsBelow,
 		s.perspective,
+		s.config.ChromeParrot,
 		s.qlogger,
 		s.logger,
 	)
@@ -484,23 +486,30 @@ var newClientConnection = func(
 	} else {
 		params.MaxDatagramFrameSize = protocol.InvalidByteCount
 	}
+	if s.config.ChromeParrot {
+		chromeParrotTransportParameters(params)
+	}
 	if s.qlogger != nil {
 		s.qlogTransportParameters(params, protocol.PerspectiveClient, false)
 	}
-	cs := handshake.NewCryptoSetupClient(
+	cs, err := handshake.NewCryptoSetupClient(
 		destConnID,
 		params,
 		tlsConf,
 		enable0RTT,
+		s.config.ChromeParrot,
 		s.rttStats,
 		s.qlogger,
 		logger,
 		s.version,
 	)
+	if err != nil {
+		return nil, err
+	}
 	s.cryptoStreamHandler = cs
 	s.cryptoStreamManager = newCryptoStreamManager(s.initialStream, s.handshakeStream, oneRTTStream)
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
-	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.initialStream, s.handshakeStream, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.initialStream, s.handshakeStream, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective, s.config.ChromeParrot)
 	if len(tlsConf.ServerName) > 0 {
 		s.tokenStoreKey = tlsConf.ServerName
 	} else {
@@ -512,12 +521,12 @@ var newClientConnection = func(
 			s.rttStats.SetInitialRTT(token.rtt)
 		}
 	}
-	return &wrappedConn{Conn: s}
+	return &wrappedConn{Conn: s}, nil
 }
 
 func (c *Conn) preSetup() {
 	c.largestRcvdAppData = protocol.InvalidPacketNumber
-	c.initialStream = newInitialCryptoStream(c.perspective == protocol.PerspectiveClient)
+	c.initialStream = newInitialCryptoStream(c.perspective == protocol.PerspectiveClient, c.config.ChromeParrot)
 	c.handshakeStream = newCryptoStream()
 	c.sendQueue = newSendQueue(c.conn)
 	c.retransmissionQueue = newRetransmissionQueue()

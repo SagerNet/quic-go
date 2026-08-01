@@ -195,6 +195,16 @@ type Config struct {
 	// DisablePathManager disables path manager.
 	// for hysteria2 port hopping, direct change remote address without connection migration logic
 	DisablePathManager bool
+
+	// ChromeParrot makes the client's QUIC handshake look like Google Chrome's.
+	// It overrides the flow control windows, stream limits, idle timeout and
+	// packet size with Chrome's values, encodes the transport parameters the way
+	// Chrome does (see wire.marshalChrome), and applies Chrome's chaos
+	// protection to the Initial packets.
+	//
+	// Client side only; it has no effect on a listener. Because it pins the
+	// values above, settings that conflict with Chrome's are ignored.
+	ChromeParrot bool
 }
 
 // ClientInfo contains information about an incoming connection attempt.
