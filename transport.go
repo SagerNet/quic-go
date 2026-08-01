@@ -268,11 +268,32 @@ func (t *Transport) dial(ctx context.Context, addr net.Addr, host string, tlsCon
 	conf = populateConfig(conf)
 	tlsConf = tlsConf.Clone()
 	// setTLSConfigServerName(tlsConf, addr, host)
+	// The first Initial packet is numbered 1, not 0.
+	var initialPacketNumber protocol.PacketNumber
+	if conf.ChromeParrot {
+		initialPacketNumber = 1
+		// Chrome always advertises DATAGRAM support, so enable it and never omit
+		// the transport parameter; leaving it out would be one parameter short of
+		// Chrome's set.
+		conf.EnableDatagrams = true
+		conf.OmitMaxDatagramFrameSize = false
+		conf.EnableStreamResetPartialDelivery = false
+		// Chrome pins these, so anything the caller asked for is overridden.
+		conf.MaxIdleTimeout = chromeMaxIdleTimeout
+		conf.InitialStreamReceiveWindow = chromeInitialMaxStreamData
+		conf.InitialConnectionReceiveWindow = chromeInitialMaxData
+		conf.MaxIncomingStreams = chromeMaxIncomingStreams
+		conf.MaxIncomingUniStreams = chromeMaxIncomingUniStreams
+		conf.InitialPacketSize = chromeInitialPacketSize
+		// The auto-tuning ceilings must not sit below the starting windows.
+		conf.MaxStreamReceiveWindow = max(conf.MaxStreamReceiveWindow, conf.InitialStreamReceiveWindow)
+		conf.MaxConnectionReceiveWindow = max(conf.MaxConnectionReceiveWindow, conf.InitialConnectionReceiveWindow)
+	}
 	return t.doDial(ctx,
 		newSendConn(t.conn, addr, udp.PacketInfo{}, utils.DefaultLogger),
 		tlsConf,
 		conf,
-		0,
+		initialPacketNumber,
 		false,
 		use0RTT,
 		conf.Versions[0],
@@ -293,7 +314,13 @@ func (t *Transport) doDial(
 	if err != nil {
 		return nil, err
 	}
-	destConnID, err := generateConnectionIDForInitial()
+	// quic-go randomizes the initial destination connection ID length to exercise
+	// servers; a fixed length is needed here instead.
+	genInitialConnID := generateConnectionIDForInitial
+	if config != nil && config.ChromeParrot {
+		genInitialConnID = protocol.GenerateChromeConnectionIDForInitial
+	}
+	destConnID, err := genInitialConnID()
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +339,7 @@ func (t *Transport) doDial(
 	logger := utils.DefaultLogger.WithPrefix("client")
 	logger.Infof("Starting new connection to %s (%s -> %s), source connection ID %s, destination connection ID %s, version %s", tlsConf.ServerName, sendConn.LocalAddr(), sendConn.RemoteAddr(), srcConnID, destConnID, version)
 
-	conn := newClientConnection(
+	conn, err := newClientConnection(
 		context.WithoutCancel(ctx),
 		sendConn,
 		(*packetHandlerMap)(t),
@@ -329,6 +356,10 @@ func (t *Transport) doDial(
 		logger,
 		version,
 	)
+	if err != nil {
+		t.mutex.Unlock()
+		return nil, err
+	}
 	t.handlers[srcConnID] = conn
 	t.mutex.Unlock()
 

@@ -329,6 +329,7 @@ var newConnection = func(
 		s.conn.capabilities().ECN,
 		s.receivedPacketHandler.IgnorePacketsBelow,
 		s.perspective,
+		false, // servers keep quic-go's 2-byte packet number floor
 		s.qlogger,
 		s.logger,
 	)
@@ -381,7 +382,7 @@ var newConnection = func(
 		s.version,
 	)
 	s.cryptoStreamHandler = cs
-	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.cryptoStreamManager, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective, s.qlogger)
+	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.cryptoStreamManager, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective, false, s.qlogger)
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
 	return w
 }
@@ -403,7 +404,7 @@ var newClientConnection = func(
 	qlogTrace qlogwriter.Trace,
 	logger utils.Logger,
 	v protocol.Version,
-) *wrappedConn {
+) (*wrappedConn, error) {
 	s := &Conn{
 		conn:                conn,
 		config:              conf,
@@ -469,6 +470,7 @@ var newClientConnection = func(
 		s.conn.capabilities().ECN,
 		s.receivedPacketHandler.IgnorePacketsBelow,
 		s.perspective,
+		s.config.ChromeParrot,
 		s.qlogger,
 		s.logger,
 	)
@@ -501,32 +503,43 @@ var newClientConnection = func(
 	} else {
 		params.MaxDatagramFrameSize = protocol.InvalidByteCount
 	}
+	if s.config.ChromeParrot {
+		chromeParrotTransportParameters(params, s.version)
+	}
 	if s.qlogger != nil {
 		s.qlogTransportParameters(params, protocol.PerspectiveClient)
 	}
-	cs := handshake.NewCryptoSetupClient(
+	cs, err := handshake.NewCryptoSetupClient(
 		destConnID,
 		params,
 		tlsConf,
 		enable0RTT,
+		s.config.ChromeParrot,
 		s.rttStats,
 		s.qlogger,
 		logger,
 		s.version,
 	)
+	if err != nil {
+		if s.qlogger != nil {
+			s.qlogger.Close()
+		}
+		s.ctxCancel(err)
+		return nil, err
+	}
 	s.cryptoStreamHandler = cs
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
-	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.cryptoStreamManager, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective, s.qlogger)
+	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, s.cryptoStreamManager, s.sentPacketHandler, s.retransmissionQueue, cs, s.framer, &s.receivedPacketHandler, s.datagramQueue, s.perspective, s.config.ChromeParrot, s.qlogger)
 	if token != nil {
 		s.packer.SetToken(token.data)
 	}
-	return w
+	return w, nil
 }
 
 // r is the pathReceiver for the Transport that the connection was dialed or accepted on.
 func (c *Conn) preSetup(r *pathReceiver) {
 	c.largestRcvdAppData = protocol.InvalidPacketNumber
-	c.cryptoStreamManager = newCryptoStreamManager(c.perspective)
+	c.cryptoStreamManager = newCryptoStreamManager(c.perspective, c.config.ChromeParrot)
 	c.sendQueue = newSendQueue(c.conn)
 	c.retransmissionQueue = newRetransmissionQueue()
 	c.frameParser = *wire.NewFrameParser(

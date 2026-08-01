@@ -55,7 +55,7 @@ func (b *PacketBuffer) Len() protocol.ByteCount { return protocol.ByteCount(len(
 func (b *PacketBuffer) Cap() protocol.ByteCount { return protocol.ByteCount(cap(b.Data)) }
 
 func (b *PacketBuffer) putBack() {
-	if cap(b.Data) == protocol.MaxPacketBufferSize {
+	if cap(b.Data) == protocol.MaxReceivePacketSize {
 		bufferPool.Put(b)
 		return
 	}
@@ -84,7 +84,7 @@ func GetLargePacketBuffer() *PacketBuffer {
 
 func init() {
 	bufferPool.New = func() any {
-		return &PacketBuffer{Data: make([]byte, 0, protocol.MaxPacketBufferSize)}
+		return &PacketBuffer{Data: make([]byte, 0, protocol.MaxReceivePacketSize)}
 	}
 	largeBufferPool.New = func() any {
 		return &PacketBuffer{Data: make([]byte, 0, protocol.MaxLargePacketBufferSize)}

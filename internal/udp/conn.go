@@ -109,9 +109,9 @@ var _ Conn = &basicConn{}
 
 func (c *basicConn) ReadPacket() (Packet, error) {
 	buffer := GetPacketBuffer()
-	// The packet size should not exceed protocol.MaxPacketBufferSize bytes.
+	// The packet size should not exceed protocol.MaxReceivePacketSize bytes.
 	// Larger packets are truncated and will fail decryption.
-	buffer.Data = buffer.Data[:protocol.MaxPacketBufferSize]
+	buffer.Data = buffer.Data[:protocol.MaxReceivePacketSize]
 	n, addr, err := c.ReadFrom(buffer.Data)
 	if err != nil {
 		buffer.Release()

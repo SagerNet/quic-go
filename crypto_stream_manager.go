@@ -13,9 +13,9 @@ type cryptoStreamManager struct {
 	oneRTTStream    *cryptoStream
 }
 
-func newCryptoStreamManager(perspective protocol.Perspective) *cryptoStreamManager {
+func newCryptoStreamManager(perspective protocol.Perspective, chromeParrot bool) *cryptoStreamManager {
 	return &cryptoStreamManager{
-		initialStream:   newInitialCryptoStream(perspective == protocol.PerspectiveClient),
+		initialStream:   newInitialCryptoStream(perspective == protocol.PerspectiveClient, chromeParrot),
 		handshakeStream: newCryptoStream(),
 		oneRTTStream:    newCryptoStream(),
 	}

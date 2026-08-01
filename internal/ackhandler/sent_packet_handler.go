@@ -137,6 +137,12 @@ type sentPacketHandler struct {
 
 	perspective protocol.Perspective
 
+	// shortPacketNumbers allows single-byte packet numbers, as Chrome uses.
+	shortPacketNumbers bool
+	// maxDatagramSize converts the congestion window into a packet count, which
+	// is what the packet number length depends on when shortPacketNumbers is set.
+	maxDatagramSize protocol.ByteCount
+
 	qlogger     qlogwriter.Recorder
 	lastMetrics qlog.MetricsUpdated
 	logger      utils.Logger
@@ -155,12 +161,15 @@ func NewSentPacketHandler(
 	enableECN bool,
 	ignorePacketsBelow func(protocol.PacketNumber),
 	pers protocol.Perspective,
+	shortPacketNumbers bool,
 	qlogger qlogwriter.Recorder,
 	logger utils.Logger,
 ) SentPacketHandler {
 	congestion := congestion.NewRenoSender(rttStats, initialMaxDatagramSize, qlogger)
 
 	h := &sentPacketHandler{
+		shortPacketNumbers:             shortPacketNumbers,
+		maxDatagramSize:                initialMaxDatagramSize,
 		peerCompletedAddressValidation: pers == protocol.PerspectiveServer,
 		peerAddressValidated:           pers == protocol.PerspectiveClient || clientAddressValidated,
 		pns:                            newPacketNumberGenerator(initialPN, skipPacketInitialPeriod, skipPacketMaxPeriod),
@@ -1177,6 +1186,13 @@ func (h *sentPacketHandler) PeekPacketNumber(space protocol.PacketNumberSpace) (
 	pnSpace := h.getPacketNumberSpace(space)
 	pn := h.pns.Peek(space == protocol.PacketNumberSpaceAppData)
 	// See section 17.1 of RFC 9000.
+	if h.shortPacketNumbers {
+		var cwndPackets protocol.PacketNumber
+		if h.maxDatagramSize > 0 {
+			cwndPackets = protocol.PacketNumber(h.congestionWindow(h.getInjectedCongestionControl()) / h.maxDatagramSize)
+		}
+		return pn, protocol.PacketNumberLengthForHeaderChrome(pn, pnSpace.largestAcked, cwndPackets)
+	}
 	return pn, protocol.PacketNumberLengthForHeader(pn, pnSpace.largestAcked)
 }
 
@@ -1252,6 +1268,7 @@ func (h *sentPacketHandler) TimeUntilSend() monotime.Time {
 }
 
 func (h *sentPacketHandler) SetMaxDatagramSize(s protocol.ByteCount) {
+	h.maxDatagramSize = s
 	h.congestion.SetMaxDatagramSize(s)
 	cc := h.getInjectedCongestionControl()
 	if cc != nil {

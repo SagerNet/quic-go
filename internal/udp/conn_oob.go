@@ -145,7 +145,7 @@ func (c *oobConn) ReadPacket() (Packet, error) {
 		// replace buffers data buffers up to the packet that has been consumed during the last ReadBatch call
 		for i := uint8(0); i < c.readPos; i++ {
 			buffer := GetPacketBuffer()
-			buffer.Data = buffer.Data[:protocol.MaxPacketBufferSize]
+			buffer.Data = buffer.Data[:protocol.MaxReceivePacketSize]
 			c.buffers[i] = buffer
 			c.messages[i].Buffers[0] = c.buffers[i].Data
 		}

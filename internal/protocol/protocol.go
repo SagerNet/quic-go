@@ -111,6 +111,10 @@ type StatelessResetToken [16]byte
 // Ethernet's max packet size is 1500 bytes,  1500 - 48 = 1452.
 const MaxPacketBufferSize = 1452
 
+// MaxReceivePacketSize is the size of the buffers datagrams are received into.
+// It covers the max_udp_payload_size advertised by a Chrome-parroting client.
+const MaxReceivePacketSize = 1472
+
 // MaxLargePacketBufferSize is used when using GSO
 const MaxLargePacketBufferSize = 20 * 1024
 

@@ -25,6 +25,8 @@ type baseCryptoStream struct {
 
 	writeOffset protocol.ByteCount
 	writeBuf    []byte
+	frontLen    protocol.ByteCount
+	sentLen     protocol.ByteCount
 }
 
 func newCryptoStream() *cryptoStream {
@@ -79,18 +81,61 @@ func (s *baseCryptoStream) Write(p []byte) (int, error) {
 }
 
 func (s *baseCryptoStream) HasData() bool {
-	return len(s.writeBuf) > 0
+	return s.PendingLen() > 0
+}
+
+// PendingLen returns the number of bytes still queued for sending, which the
+// packet packer uses to size the crypto budget of each Initial.
+func (s *baseCryptoStream) PendingLen() protocol.ByteCount {
+	return protocol.ByteCount(len(s.writeBuf)) - s.sentLen
+}
+
+// WriteOffset returns the crypto stream offset the next CRYPTO frame will carry.
+// Sizing that frame to an exact byte count requires knowing the offset, since it
+// determines how many bytes the frame header occupies.
+func (s *baseCryptoStream) WriteOffset() protocol.ByteCount {
+	return s.writeOffset
 }
 
 func (s *baseCryptoStream) PopCryptoFrame(maxLen protocol.ByteCount) *wire.CryptoFrame {
 	f := &wire.CryptoFrame{Offset: s.writeOffset}
-	n := min(f.MaxDataLen(maxLen), protocol.ByteCount(len(s.writeBuf)))
+	available := protocol.ByteCount(len(s.writeBuf))
+	if s.sentLen > 0 {
+		available = s.frontLen
+	}
+	n := min(f.MaxDataLen(maxLen), available)
 	if n <= 0 {
 		return nil
 	}
 	f.Data = s.writeBuf[:n]
 	s.writeBuf = s.writeBuf[n:]
 	s.writeOffset += n
+	if s.sentLen > 0 {
+		s.frontLen -= n
+		if s.frontLen == 0 {
+			s.writeBuf = s.writeBuf[s.sentLen:]
+			s.writeOffset += s.sentLen
+			s.sentLen = 0
+		}
+	}
+	return f
+}
+
+// PopCryptoFrameTail takes dataLen bytes from the end of what is queued rather
+// than the start, so a packet can carry the last part of the ClientHello while
+// the middle is still pending. Later calls to PopCryptoFrame continue from the
+// front, and skip over the tail once they reach it.
+func (s *baseCryptoStream) PopCryptoFrameTail(dataLen protocol.ByteCount) *wire.CryptoFrame {
+	if s.sentLen > 0 || dataLen <= 0 || dataLen >= protocol.ByteCount(len(s.writeBuf)) {
+		return nil
+	}
+	n := protocol.ByteCount(len(s.writeBuf)) - dataLen
+	f := &wire.CryptoFrame{
+		Offset: s.writeOffset + n,
+		Data:   s.writeBuf[n:],
+	}
+	s.frontLen = n
+	s.sentLen = dataLen
 	return f
 }
 
@@ -111,9 +156,13 @@ type initialCryptoStream struct {
 	cuts     [2]clientHelloCut
 }
 
-func newInitialCryptoStream(isClient bool) *initialCryptoStream {
+// chromeParrot disables quic-go's own ClientHello scrambling. That scheme cuts at
+// semantically chosen offsets, which is recognizably quic-go; the packet packer
+// applies chaos protection instead, and running both would produce a hybrid
+// matching neither.
+func newInitialCryptoStream(isClient, chromeParrot bool) *initialCryptoStream {
 	var scramble bool
-	if isClient {
+	if isClient && !chromeParrot {
 		disabled, err := strconv.ParseBool(os.Getenv(disableClientHelloScramblingEnv))
 		scramble = err != nil || !disabled
 	}
