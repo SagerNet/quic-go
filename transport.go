@@ -50,9 +50,9 @@ type closePacket struct {
 }
 
 // OOBCapablePacketConn is a connection that allows the reading of ECN bits from the IP header.
-// If the PacketConn passed to the [Transport] satisfies this interface, quic-go will use it.
-// In this case, packets will be read in batches, and [OOBCapablePacketConn.WriteMsgUDP]
-// will be used instead of [net.PacketConn.WriteTo] to write packets.
+//
+// Deprecated: all optimizations are now driven by the file descriptor alone; a conn only needs
+// to implement syscall.Conn to enable them.
 type OOBCapablePacketConn = udp.OOBCapablePacketConn
 
 // The Transport is the central point to manage incoming and outgoing QUIC connections.

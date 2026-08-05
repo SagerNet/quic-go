@@ -4,10 +4,15 @@ package udp
 
 import (
 	"net"
+	"syscall"
 )
 
-func newConn(c net.PacketConn, supportsDF bool) (*basicConn, error) {
-	return &basicConn{PacketConn: c, supportsDF: supportsDF}, nil
+func newConn(pc net.PacketConn, _ syscall.RawConn, supportsDF bool) (*basicConn, error) {
+	return &basicConn{PacketConn: pc, supportsDF: supportsDF}, nil
+}
+
+func newConnectedConn(c net.Conn, _ syscall.RawConn, supportsDF bool) (*basicConnectedConn, error) {
+	return &basicConnectedConn{Conn: c, remoteAddr: c.RemoteAddr(), supportsDF: supportsDF}, nil
 }
 
 // The OpenBSD kernel rejects socket buffer sizes larger than SB_MAX (2 MB, see sys/sys/socketvar.h)
