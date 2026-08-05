@@ -97,6 +97,56 @@ func Dial(ctx context.Context, c net.PacketConn, addr net.Addr, tlsConf *tls.Con
 	return conn, nil
 }
 
+// DialConn establishes a new QUIC connection to a server over a connected packet-oriented
+// net.Conn, such as a conn returned by net.DialUDP. The remote address is taken from the
+// conn, and every optimization enabled for a syscall.Conn-capable net.PacketConn is enabled
+// here as well, driven by the file descriptor alone.
+func DialConn(ctx context.Context, c net.Conn, tlsConf *tls.Config, conf *Config) (*Conn, error) {
+	dl, err := setupTransportConn(c, tlsConf, conf)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dl.Dial(ctx, c.RemoteAddr(), tlsConf, conf)
+	if err != nil {
+		dl.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+// DialEarlyConn establishes a new 0-RTT QUIC connection to a server over a connected
+// packet-oriented net.Conn. See [DialConn] for more details.
+func DialEarlyConn(ctx context.Context, c net.Conn, tlsConf *tls.Config, conf *Config) (*Conn, error) {
+	dl, err := setupTransportConn(c, tlsConf, conf)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dl.DialEarly(ctx, c.RemoteAddr(), tlsConf, conf)
+	if err != nil {
+		dl.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+func setupTransportConn(c net.Conn, tlsConf *tls.Config, conf *Config) (*Transport, error) {
+	if tlsConf == nil {
+		return nil, errors.New("quic: tls.Config not set")
+	}
+	conn, err := wrapNetConn(c)
+	if err != nil {
+		return nil, err
+	}
+	tr := &Transport{
+		Conn:        conn.(net.PacketConn),
+		isSingleUse: true,
+	}
+	if conf != nil && conf.ChromeParrot {
+		tr.ConnectionIDGenerator = ZeroLengthConnectionIDGenerator{}
+	}
+	return tr, nil
+}
+
 func setupTransport(c net.PacketConn, tlsConf *tls.Config, conf *Config, createdPacketConn bool) (*Transport, error) {
 	if tlsConf == nil {
 		return nil, errors.New("quic: tls.Config not set")
