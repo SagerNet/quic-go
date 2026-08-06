@@ -104,8 +104,8 @@ type chaosItem struct {
 func (p *packetPacker) appendChaosProtectedPayload(raw []byte, pl payload, paddingLen protocol.ByteCount, v protocol.Version) ([]byte, error) {
 	startLen := len(raw)
 
-	// The ACK, if any, is written first and left out of the shuffle. The first
-	// client flight carries no ACK, so in the case we care about this is a no-op.
+	// The ACK, if any, is written first and left out of the shuffle. Packets that
+	// carry an ACK and no CRYPTO data never get here, see worthChaosProtecting.
 	if pl.ack != nil {
 		var err error
 		if raw, err = pl.ack.Append(raw, v); err != nil {
@@ -161,6 +161,21 @@ func (p *packetPacker) appendChaosProtectedPayload(raw []byte, pl payload, paddi
 		return nil, fmt.Errorf("packetPacker BUG: chaos-protected payload size inconsistent (expected %d, got %d bytes)", pl.length+paddingLen, written)
 	}
 	return raw, nil
+}
+
+// worthChaosProtecting reports whether a packet is one the imitated client
+// scrambles. It needs CRYPTO data to shred and padding to spend on the result,
+// so an Initial carrying only an ACK goes out as a plain ACK and PADDING.
+func worthChaosProtecting(pl payload, paddingLen protocol.ByteCount) bool {
+	if paddingLen <= 0 {
+		return false
+	}
+	for _, f := range pl.frames {
+		if _, ok := f.Frame.(*wire.CryptoFrame); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // splitCryptoFrames partitions a frame list into CRYPTO frames and everything
