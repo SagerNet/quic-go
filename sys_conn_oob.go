@@ -38,6 +38,14 @@ type batchConn interface {
 	ReadBatch(ms []ipv4.Message, flags int) (int, error)
 }
 
+// segmentWriter sends the segments of a GSO buffer as a batch of datagrams, on platforms that
+// have a batched sendmsg but no kernel segmentation offload.
+type segmentWriter interface {
+	// WriteSegments writes b as datagrams of segmentSize bytes each, the last one possibly
+	// shorter, all carrying oob. sockaddr is nil on a connected socket.
+	WriteSegments(b []byte, segmentSize int, sockaddr unix.Sockaddr, oob []byte) (int, error)
+}
+
 // udpCompatConn makes a conn whose file descriptor was obtained through the syscall.Conn
 // contract acceptable to x/net: socket.NewConn (x/net/internal/socket/rawconn.go) classifies
 // a conn as UDP by asserting net.UDPConn's SyscallConn+ReadMsgUDP method pair and then only
@@ -150,9 +158,10 @@ func isECNDisabledUsingEnv() bool {
 
 type oobConn struct {
 	net.PacketConn
-	sysConn    syscall.RawConn
-	batchConn  batchConn
-	ipv4Socket bool
+	sysConn       syscall.RawConn
+	batchConn     batchConn
+	segmentWriter segmentWriter
+	ipv4Socket    bool
 
 	// Set when the socket is connected: the fixed remote address, delivered with every
 	// received packet, and its normalized form used to reject writes to other addresses.
@@ -234,6 +243,8 @@ func newConn(pc net.PacketConn, sysConn syscall.RawConn, supportsDF bool) (*oobC
 	var bc batchConn
 	if ibc, ok := pc.(batchConn); ok {
 		bc = ibc
+	} else if mbc := newBatchReader(sysConn, false); mbc != nil {
+		bc = mbc
 	} else {
 		bc = ipv4.NewPacketConn(&udpCompatConn{PacketConn: pc, sysConn: sysConn})
 	}
@@ -243,6 +254,7 @@ func newConn(pc net.PacketConn, sysConn syscall.RawConn, supportsDF bool) (*oobC
 		// preallocate the [][]byte
 		msgs[i].Buffers = make([][]byte, 1)
 	}
+	gso := isGSOEnabled(sysConn)
 	oobConn := &oobConn{
 		PacketConn: pc,
 		sysConn:    sysConn,
@@ -252,9 +264,12 @@ func newConn(pc net.PacketConn, sysConn syscall.RawConn, supportsDF bool) (*oobC
 		readPos:    batchSize,
 		cap: connCapabilities{
 			DF:  supportsDF,
-			GSO: isGSOEnabled(sysConn),
+			GSO: gso,
 			ECN: isECNEnabled(),
 		},
+	}
+	if gso {
+		oobConn.segmentWriter = newSegmentWriter(sysConn)
 	}
 	for i := range batchSize {
 		oobConn.messages[i].OOB = make([]byte, oobBufferSize)
@@ -294,6 +309,8 @@ func newConnectedConn(c net.Conn, sysConn syscall.RawConn, supportsDF bool) (*oo
 	var bc batchConn
 	if ibc, ok := c.(batchConn); ok {
 		bc = ibc
+	} else if mbc := newBatchReader(sysConn, true); mbc != nil {
+		bc = mbc
 	} else {
 		bc = ipv4.NewPacketConn(packetConn)
 	}
@@ -303,6 +320,7 @@ func newConnectedConn(c net.Conn, sysConn syscall.RawConn, supportsDF bool) (*oo
 		// preallocate the [][]byte
 		msgs[i].Buffers = make([][]byte, 1)
 	}
+	gso := isGSOEnabled(sysConn)
 	oobConn := &oobConn{
 		PacketConn:     packetConn,
 		sysConn:        sysConn,
@@ -314,9 +332,12 @@ func newConnectedConn(c net.Conn, sysConn syscall.RawConn, supportsDF bool) (*oo
 		readPos:        batchSize,
 		cap: connCapabilities{
 			DF:  supportsDF,
-			GSO: isGSOEnabled(sysConn),
+			GSO: gso,
 			ECN: isECNEnabled(),
 		},
+	}
+	if gso {
+		oobConn.segmentWriter = newSegmentWriter(sysConn)
 	}
 	for i := range batchSize {
 		oobConn.messages[i].OOB = make([]byte, oobBufferSize)
@@ -430,6 +451,7 @@ func (c *oobConn) WritePacket(b []byte, addr net.Addr, packetInfoOOB []byte, gso
 		return 0, fmt.Errorf("expected a *net.UDPAddr, got %T", addr)
 	}
 	oob := packetInfoOOB
+	var segmentSize int
 	if gsoSize > 0 {
 		if !c.capabilities().GSO {
 			panic("GSO disabled")
@@ -439,7 +461,10 @@ func (c *oobConn) WritePacket(b []byte, addr net.Addr, packetInfoOOB []byte, gso
 		// single-segment send (segment_size >= payload length). This mirrors quinn-udp's
 		// behavior.
 		if len(b) > int(gsoSize) {
-			oob = appendUDPSegmentSizeMsg(oob, gsoSize)
+			segmentSize = int(gsoSize)
+			if c.segmentWriter == nil {
+				oob = appendUDPSegmentSizeMsg(oob, gsoSize)
+			}
 		}
 	}
 	if ecn != protocol.ECNUnsupported {
@@ -460,6 +485,9 @@ func (c *oobConn) WritePacket(b []byte, addr net.Addr, packetInfoOOB []byte, gso
 		}
 	} else if addr != c.remoteAddr && normalizedAddrPort(addr) != c.remoteAddrPort {
 		return 0, fmt.Errorf("cannot send to %s on a conn connected to %s", addr, c.remoteAddr)
+	}
+	if segmentSize > 0 && c.segmentWriter != nil {
+		return c.segmentWriter.WriteSegments(b, segmentSize, sockaddr, oob)
 	}
 	var n int
 	var sendErr error
