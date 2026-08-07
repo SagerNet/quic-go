@@ -94,7 +94,7 @@ func (h *sendQueue) Run() error {
 				// 2. Path MTU discovery,and
 				// 3. Eventual detection of loss PingFrame.
 				var tooLarge *DatagramTooLargeError
-				if !isSendMsgSizeErr(err) && !errors.As(err, &tooLarge) {
+				if !isSendMsgSizeErr(err) && !isNoBufferSpaceErr(err) && !errors.As(err, &tooLarge) {
 					return err
 				}
 			}
