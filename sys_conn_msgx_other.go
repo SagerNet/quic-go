@@ -1,4 +1,4 @@
-//go:build linux || freebsd || ios
+//go:build linux || freebsd
 
 package quic
 

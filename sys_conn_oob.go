@@ -254,7 +254,7 @@ func newConn(pc net.PacketConn, sysConn syscall.RawConn, supportsDF bool) (*oobC
 		// preallocate the [][]byte
 		msgs[i].Buffers = make([][]byte, 1)
 	}
-	gso := isGSOEnabled(sysConn)
+	gso := isGSOEnabled(sysConn, false)
 	oobConn := &oobConn{
 		PacketConn: pc,
 		sysConn:    sysConn,
@@ -320,7 +320,7 @@ func newConnectedConn(c net.Conn, sysConn syscall.RawConn, supportsDF bool) (*oo
 		// preallocate the [][]byte
 		msgs[i].Buffers = make([][]byte, 1)
 	}
-	gso := isGSOEnabled(sysConn)
+	gso := isGSOEnabled(sysConn, true)
 	oobConn := &oobConn{
 		PacketConn:     packetConn,
 		sysConn:        sysConn,

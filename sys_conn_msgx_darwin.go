@@ -1,8 +1,4 @@
-//go:build darwin && !ios
-
-// On iOS both directions misbehave in the Network Extension (recvmsg_x on unconnected UDP
-// sockets delivers no data, connected sockets stop passing traffic after a rebind), so msgx
-// is macOS only until it can be debugged on a device.
+//go:build darwin
 
 package quic
 
@@ -44,9 +40,12 @@ func isMsgXAvailable(rawConn syscall.RawConn) bool {
 
 // The GSO capability here means the send path accepts a multi-segment buffer, which sendmsg_x
 // serves by sending its segments as a batch of datagrams; darwin has no kernel offload.
-func isGSOEnabled(rawConn syscall.RawConn) bool {
+func isGSOEnabled(rawConn syscall.RawConn, connected bool) bool {
 	disabled, err := strconv.ParseBool(os.Getenv("QUIC_GO_DISABLE_GSO"))
 	if err == nil && disabled {
+		return false
+	}
+	if msgxRequiresConnectedSocket && !connected {
 		return false
 	}
 	return isMsgXAvailable(rawConn)
@@ -61,6 +60,9 @@ type msgXReader struct {
 }
 
 func newBatchReader(rawConn syscall.RawConn, connected bool) batchConn {
+	if msgxRequiresConnectedSocket && !connected {
+		return nil
+	}
 	if !isMsgXAvailable(rawConn) {
 		return nil
 	}

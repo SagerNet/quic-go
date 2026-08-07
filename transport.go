@@ -539,11 +539,12 @@ func (t *Transport) close(e error) {
 func (t *Transport) listen(conn rawConn) {
 	for {
 		p, err := conn.ReadPacket()
+		var nerr net.Error
 		//nolint:staticcheck // SA1019 ignore this!
 		// TODO: This code is used to ignore wsa errors on Windows.
 		// Since net.Error.Temporary is deprecated as of Go 1.18, we should find a better solution.
 		// See https://github.com/quic-go/quic-go/issues/1737 for details.
-		if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+		if errors.As(err, &nerr) && nerr.Temporary() {
 			t.mutex.Lock()
 			closed := t.closeErr != nil
 			t.mutex.Unlock()
