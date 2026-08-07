@@ -41,7 +41,7 @@ func marshalIPv4PktInfo(ip [4]byte, _ uint32) []byte {
 	return b
 }
 
-func isGSOEnabled(syscall.RawConn) bool { return false }
+func isGSOEnabled(syscall.RawConn, bool) bool { return false }
 
 func isECNEnabled() bool { return !isECNDisabledUsingEnv() }
 

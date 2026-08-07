@@ -70,7 +70,7 @@ func marshalIPv4PktInfo(ip [4]byte, ifIndex uint32) []byte {
 
 // isGSOEnabled tests if the kernel supports GSO.
 // Sending with GSO might still fail later on, if the interface doesn't support it (see isGSOError).
-func isGSOEnabled(conn syscall.RawConn) bool {
+func isGSOEnabled(conn syscall.RawConn, _ bool) bool {
 	if kernelVersionMajor < 5 {
 		return false
 	}
