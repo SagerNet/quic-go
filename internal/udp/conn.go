@@ -59,6 +59,14 @@ type OOBCapablePacketConn interface {
 
 var _ OOBCapablePacketConn = &net.UDPConn{}
 
+// IOActivityConn is implemented by conns that observe their own I/O.
+// On the optimized path, reads and writes go through the file descriptor and bypass the conn's
+// own methods; these callbacks are invoked instead: onRead with the size of every received packet,
+// onWrite with the number of bytes sent by every write.
+type IOActivityConn interface {
+	IOActivityFuncs() (onRead func(size int), onWrite func(size int))
+}
+
 // Wrap configures pc for UDP I/O.
 // If pc already implements Conn, it is returned unchanged.
 func Wrap(pc net.PacketConn) (Conn, error) {

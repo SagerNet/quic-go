@@ -125,6 +125,9 @@ type oobConn struct {
 	// packet conn itself is shared by every connection on the Transport.
 	writeSockaddrCache atomic.Pointer[writeSockaddrEntry]
 
+	onRead  func(size int)
+	onWrite func(size int)
+
 	cap Capabilities
 }
 
@@ -219,6 +222,9 @@ func newConn(pc net.PacketConn, sysConn syscall.RawConn, supportsDF bool) (*oobC
 	if gso {
 		oobConn.segmentWriter = newSegmentWriter(sysConn)
 	}
+	if activityConn, ok := pc.(IOActivityConn); ok {
+		oobConn.onRead, oobConn.onWrite = activityConn.IOActivityFuncs()
+	}
 	for i := range batchSize {
 		oobConn.messages[i].OOB = make([]byte, oobBufferSize)
 	}
@@ -287,6 +293,9 @@ func newConnectedConn(c net.Conn, sysConn syscall.RawConn, supportsDF bool) (*oo
 	if gso {
 		oobConn.segmentWriter = newSegmentWriter(sysConn)
 	}
+	if activityConn, ok := c.(IOActivityConn); ok {
+		oobConn.onRead, oobConn.onWrite = activityConn.IOActivityFuncs()
+	}
 	for i := range batchSize {
 		oobConn.messages[i].OOB = make([]byte, oobBufferSize)
 	}
@@ -326,6 +335,9 @@ func (c *oobConn) ReadPacket() (Packet, error) {
 	msg := c.messages[c.readPos]
 	buffer := c.buffers[c.readPos]
 	c.readPos++
+	if c.onRead != nil {
+		c.onRead(msg.N)
+	}
 
 	remoteAddr := msg.Addr
 	if c.remoteAddr != nil {
@@ -434,27 +446,29 @@ func (c *oobConn) WritePacket(b []byte, addr net.Addr, packetInfoOOB []byte, gso
 			oob = appendIPv6ECNMsg(oob, ecn)
 		}
 	}
-	if segmentSize > 0 && c.segmentWriter != nil {
-		return c.segmentWriter.WriteSegments(b, segmentSize, sockaddr, oob)
-	}
 	var n int
-	var sendErr error
-	err := c.sysConn.Write(func(fd uintptr) bool {
-		for {
-			n, sendErr = unix.SendmsgN(int(fd), b, oob, sockaddr, 0)
-			if sendErr == unix.EINTR {
-				continue
+	var err error
+	if segmentSize > 0 && c.segmentWriter != nil {
+		n, err = c.segmentWriter.WriteSegments(b, segmentSize, sockaddr, oob)
+	} else {
+		var sendErr error
+		err = c.sysConn.Write(func(fd uintptr) bool {
+			for {
+				n, sendErr = unix.SendmsgN(int(fd), b, oob, sockaddr, 0)
+				if sendErr == unix.EINTR {
+					continue
+				}
+				return sendErr != unix.EAGAIN
 			}
-			return sendErr != unix.EAGAIN
+		})
+		if err == nil && sendErr != nil {
+			err = os.NewSyscallError("sendmsg", sendErr)
 		}
-	})
-	if err != nil {
-		return n, err
 	}
-	if sendErr != nil {
-		return n, os.NewSyscallError("sendmsg", sendErr)
+	if c.onWrite != nil && n > 0 {
+		c.onWrite(n)
 	}
-	return n, nil
+	return n, err
 }
 
 func (c *oobConn) sockaddrOf(addr net.Addr) (_ unix.Sockaddr, ipv4 bool) {

@@ -55,6 +55,12 @@ type closePacket struct {
 // to implement syscall.Conn to enable them.
 type OOBCapablePacketConn = udp.OOBCapablePacketConn
 
+// IOActivityConn is implemented by conns passed to the Transport that observe their own I/O.
+// On the optimized path, reads and writes go through the file descriptor and bypass the conn's
+// own methods; these callbacks are invoked instead: onRead with the size of every received packet,
+// onWrite with the number of bytes sent by every write.
+type IOActivityConn = udp.IOActivityConn
+
 // The Transport is the central point to manage incoming and outgoing QUIC connections.
 // QUIC demultiplexes connections based on their QUIC Connection IDs, not based on the 4-tuple.
 // This means that a single UDP socket can be used for listening for incoming connections, as well as
