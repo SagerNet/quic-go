@@ -178,6 +178,9 @@ type oobConn struct {
 	// packet conn itself is shared by every connection on the Transport.
 	writeSockaddrCache atomic.Pointer[writeSockaddrEntry]
 
+	onRead  func(size int)
+	onWrite func(size int)
+
 	cap connCapabilities
 }
 
@@ -271,6 +274,9 @@ func newConn(pc net.PacketConn, sysConn syscall.RawConn, supportsDF bool) (*oobC
 	if gso {
 		oobConn.segmentWriter = newSegmentWriter(sysConn)
 	}
+	if activityConn, ok := pc.(IOActivityConn); ok {
+		oobConn.onRead, oobConn.onWrite = activityConn.IOActivityFuncs()
+	}
 	for i := range batchSize {
 		oobConn.messages[i].OOB = make([]byte, oobBufferSize)
 	}
@@ -339,6 +345,9 @@ func newConnectedConn(c net.Conn, sysConn syscall.RawConn, supportsDF bool) (*oo
 	if gso {
 		oobConn.segmentWriter = newSegmentWriter(sysConn)
 	}
+	if activityConn, ok := c.(IOActivityConn); ok {
+		oobConn.onRead, oobConn.onWrite = activityConn.IOActivityFuncs()
+	}
 	for i := range batchSize {
 		oobConn.messages[i].OOB = make([]byte, oobBufferSize)
 	}
@@ -373,6 +382,9 @@ func (c *oobConn) ReadPacket() (receivedPacket, error) {
 			return receivedPacket{}, err
 		}
 		c.messages = c.messages[:n]
+		if c.onRead != nil {
+			c.onRead(c.messages[0].N)
+		}
 	}
 
 	msg := c.messages[c.readPos]
@@ -485,6 +497,9 @@ func (c *oobConn) WritePacket(b []byte, addr net.Addr, packetInfoOOB []byte, gso
 		}
 	} else if addr != c.remoteAddr && normalizedAddrPort(addr) != c.remoteAddrPort {
 		return 0, fmt.Errorf("cannot send to %s on a conn connected to %s", addr, c.remoteAddr)
+	}
+	if c.onWrite != nil {
+		c.onWrite(len(b))
 	}
 	if segmentSize > 0 && c.segmentWriter != nil {
 		return c.segmentWriter.WriteSegments(b, segmentSize, sockaddr, oob)

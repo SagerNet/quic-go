@@ -49,6 +49,14 @@ type OOBCapablePacketConn interface {
 
 var _ OOBCapablePacketConn = &net.UDPConn{}
 
+// IOActivityConn is implemented by conns passed to the Transport that observe their own I/O.
+// On the optimized path, reads and writes go through the file descriptor and bypass the conn's
+// own methods; these callbacks are invoked instead, once per syscall: onRead with the size of
+// the first packet of a received batch, onWrite with the size of the whole send buffer.
+type IOActivityConn interface {
+	IOActivityFuncs() (onRead func(size int), onWrite func(size int))
+}
+
 func wrapConn(pc net.PacketConn) (rawConn, error) {
 	var sysConn syscall.RawConn
 	syscallConn, isSyscallConn := pc.(syscall.Conn)
