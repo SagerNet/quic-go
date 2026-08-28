@@ -22,6 +22,7 @@ type SendAlgorithm interface {
 type SendAlgorithmEx interface {
 	SendAlgorithm
 	OnCongestionEventEx(priorInFlight protocol.ByteCount, eventTime monotime.Time, ackedPackets []congestion.AckedPacketInfo, lostPackets []congestion.LostPacketInfo)
+	OnPacketNeutered(packetNumber protocol.PacketNumber)
 	OnPacketsLost(leastUnacked protocol.PacketNumber)
 	OnAppLimited(bytesInFlight protocol.ByteCount)
 }

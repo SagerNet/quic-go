@@ -34,6 +34,9 @@ type LostPacketInfo struct {
 	BytesLost    ByteCount
 }
 
+// A CongestionControl installed with Conn.SetCongestionControl is reported to with packet
+// numbers counted once per connection over all packet number spaces, and with the bytes in
+// flight from before the reported packet was sent, as quiche's SendAlgorithmInterface is.
 type CongestionControl interface {
 	SetRTTStatsProvider(provider RTTStatsProvider)
 	TimeUntilSend(bytesInFlight ByteCount) monotime.Time
@@ -53,6 +56,9 @@ type CongestionControl interface {
 type CongestionControlEx interface {
 	CongestionControl
 	OnCongestionEventEx(priorInFlight ByteCount, eventTime monotime.Time, ackedPackets []AckedPacketInfo, lostPackets []LostPacketInfo)
+	// OnPacketNeutered is called when a packet reported through OnPacketSent stops counting
+	// towards the connection without being either acknowledged or lost.
+	OnPacketNeutered(packetNumber PacketNumber)
 	// OnPacketsLost is called to notify the congestion controller about the lowest unacked packet number.
 	// This allows cleanup of obsolete packet state data.
 	OnPacketsLost(leastUnacked PacketNumber)
