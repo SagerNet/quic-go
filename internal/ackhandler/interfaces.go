@@ -45,5 +45,5 @@ type SentPacketHandler interface {
 
 	// MaybeNotifyAppLimited notifies the congestion controller that the application
 	// has no more data to send, if the cwnd is not fully utilized.
-	MaybeNotifyAppLimited()
+	MaybeNotifyAppLimited(now monotime.Time)
 }

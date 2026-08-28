@@ -125,6 +125,9 @@ type sentPacketHandler struct {
 	congestion              congestion.SendAlgorithm
 	injectedCongestion      *injectedCongestionControl
 	injectedCongestionMutex sync.RWMutex
+	largestSentPacketNumber protocol.PacketNumber
+	largestMaxDatagramSize  protocol.ByteCount
+	lastNetworkLimitedTime  monotime.Time
 	rttStats                *utils.RTTStats
 	connStats               *utils.ConnectionStats
 
@@ -179,6 +182,8 @@ func NewSentPacketHandler(
 	h := &sentPacketHandler{
 		shortPacketNumbers:             shortPacketNumbers,
 		maxDatagramSize:                initialMaxDatagramSize,
+		largestMaxDatagramSize:         initialMaxDatagramSize,
+		largestSentPacketNumber:        protocol.InvalidPacketNumber,
 		peerCompletedAddressValidation: pers == protocol.PerspectiveServer,
 		peerAddressValidated:           pers == protocol.PerspectiveClient || clientAddressValidated,
 		pns:                            newPacketNumberGenerator(initialPN, skipPacketInitialPeriod, skipPacketMaxPeriod),
@@ -213,6 +218,36 @@ func NewSentPacketHandler(
 type injectedCongestionControl struct {
 	congestionExt.CongestionControl
 	extended congestionExt.CongestionControlEx
+	// firstPacketNumber is the packet number of the first packet sent after the
+	// controller was installed; earlier packets are not reported to it.
+	firstPacketNumber protocol.PacketNumber
+}
+
+func (cc *injectedCongestionControl) reports(pn protocol.PacketNumber, p *packet) bool {
+	return cc != nil && pn >= cc.firstPacketNumber && !p.isPathProbePacket
+}
+
+// notifyLeastUnacked ends a congestion event the way quiche does, with
+// sampler_.RemoveObsoletePackets(unacked_packets_->GetLeastUnacked()), which is the
+// number after the largest sent packet once nothing is outstanding.
+func (h *sentPacketHandler) notifyLeastUnacked(cc *injectedCongestionControl) {
+	leastUnacked := h.largestSentPacketNumber + 1
+	for pn, p := range h.hist.Packets() {
+		if cc.reports(pn, p) {
+			leastUnacked = pn
+			break
+		}
+	}
+	cc.extended.OnPacketsLost(congestionExt.PacketNumber(leastUnacked))
+}
+
+// neuterPacket reports a packet that leaves the connection without being either
+// acknowledged or lost, matching quiche's SendAlgorithmInterface::OnPacketNeutered.
+func (h *sentPacketHandler) neuterPacket(cc *injectedCongestionControl, pn protocol.PacketNumber, p *packet) {
+	if cc == nil || cc.extended == nil || !cc.reports(pn, p) || !p.IsAckEliciting() {
+		return
+	}
+	cc.extended.OnPacketNeutered(congestionExt.PacketNumber(pn))
 }
 
 func (h *sentPacketHandler) getInjectedCongestionControl() *injectedCongestionControl {
@@ -273,6 +308,7 @@ func (h *sentPacketHandler) DropPackets(encLevel protocol.EncryptionLevel, now m
 	if pnSpace == nil {
 		return
 	}
+	cc := h.getInjectedCongestionControl()
 	for pn, p := range h.hist.Packets() {
 		if pn > pnSpace.largestSent {
 			break
@@ -285,6 +321,7 @@ func (h *sentPacketHandler) DropPackets(encLevel protocol.EncryptionLevel, now m
 			continue
 		}
 		h.removeFromBytesInFlight(p)
+		h.neuterPacket(cc, pn, p)
 		h.hist.Remove(pn)
 	}
 	// drop the packet number space
@@ -342,6 +379,11 @@ func (h *sentPacketHandler) SentPacket(
 	h.connStats.BytesSent.Add(uint64(size))
 	h.connStats.PacketsSent.Add(1)
 
+	h.injectedCongestionMutex.RLock()
+	h.largestSentPacketNumber = pn
+	cc := h.injectedCongestion
+	h.injectedCongestionMutex.RUnlock()
+
 	pnSpace := h.getPacketNumberSpace(encLevel.PacketNumberSpace())
 	pnSpace.largestSent = pn
 	if encLevel.PacketNumberSpace() == protocol.PacketNumberSpaceAppData &&
@@ -372,6 +414,7 @@ func (h *sentPacketHandler) SentPacket(
 		h.setLossDetectionTimer(t)
 		return
 	}
+	priorInFlight := h.bytesInFlight
 	if isAckEliciting {
 		pnSpace.lastAckElicitingPacketTime = t
 		h.bytesInFlight += size
@@ -380,8 +423,8 @@ func (h *sentPacketHandler) SentPacket(
 			h.numProbesToSend--
 		}
 	}
-	if cc := h.getInjectedCongestionControl(); cc != nil {
-		cc.OnPacketSent(t, congestionExt.ByteCount(h.bytesInFlight), congestionExt.PacketNumber(pn), congestionExt.ByteCount(size), isAckEliciting)
+	if cc != nil {
+		cc.OnPacketSent(t, congestionExt.ByteCount(priorInFlight), congestionExt.PacketNumber(pn), congestionExt.ByteCount(size), isAckEliciting)
 	} else {
 		h.congestion.OnPacketSent(t, pn, size, isAckEliciting)
 	}
@@ -538,10 +581,15 @@ func (h *sentPacketHandler) receivedAck(ack *wire.AckFrame, encLevel protocol.En
 		if encLevel == protocol.Encryption1RTT && h.ecnTracker != nil && largestAcked > pnSpace.largestAcked {
 			congested := h.ecnTracker.HandleNewlyAcked(ackedPackets, int64(ack.ECT0), int64(ack.ECT1), int64(ack.ECNCE))
 			if congested {
-				if cc != nil {
-					cc.OnCongestionEvent(congestionExt.PacketNumber(largestAcked), 0, congestionExt.ByteCount(priorInFlight))
-				} else {
+				if cc == nil {
 					h.congestion.OnCongestionEvent(largestAcked)
+				} else {
+					for i := len(ackedPackets) - 1; i >= 0; i-- {
+						if cc.reports(ackedPackets[i].PacketNumber, ackedPackets[i].packet) {
+							cc.OnCongestionEvent(congestionExt.PacketNumber(ackedPackets[i].PacketNumber), 0, congestionExt.ByteCount(priorInFlight))
+							break
+						}
+					}
 				}
 			}
 		}
@@ -566,6 +614,7 @@ func (h *sentPacketHandler) receivedAck(ack *wire.AckFrame, encLevel protocol.En
 	if len(ackedPackets) == 0 {
 		if cc != nil && cc.extended != nil && len(h.lostPacketsInfo) != 0 {
 			cc.extended.OnCongestionEventEx(congestionExt.ByteCount(priorInFlight), rcvTime, nil, h.lostPacketsInfo)
+			h.notifyLeastUnacked(cc)
 		}
 		if len(spuriousLosses) > 0 && h.qlogger != nil {
 			h.qlogMetricsUpdated()
@@ -580,15 +629,15 @@ func (h *sentPacketHandler) receivedAck(ack *wire.AckFrame, encLevel protocol.En
 	var acked1RTTPacket bool
 	for _, p := range ackedPackets {
 		if p.includedInBytesInFlight {
-			if cc != nil {
+			if cc == nil {
+				h.congestion.OnPacketAcked(p.PacketNumber, priorInFlight)
+			} else if cc.reports(p.PacketNumber, p.packet) {
 				cc.OnPacketAcked(congestionExt.PacketNumber(p.PacketNumber), congestionExt.ByteCount(p.Length), congestionExt.ByteCount(priorInFlight), rcvTime)
 				h.ackedPacketsInfo = append(h.ackedPacketsInfo, congestionExt.AckedPacketInfo{
 					PacketNumber: congestionExt.PacketNumber(p.PacketNumber),
 					BytesAcked:   congestionExt.ByteCount(p.Length),
 					SentTime:     p.SendTime,
 				})
-			} else {
-				h.congestion.OnPacketAcked(p.PacketNumber, priorInFlight)
 			}
 		}
 		if p.EncryptionLevel == protocol.Encryption1RTT {
@@ -602,11 +651,7 @@ func (h *sentPacketHandler) receivedAck(ack *wire.AckFrame, encLevel protocol.En
 
 	if cc != nil && cc.extended != nil && (len(h.ackedPacketsInfo) != 0 || len(h.lostPacketsInfo) != 0) {
 		cc.extended.OnCongestionEventEx(congestionExt.ByteCount(priorInFlight), rcvTime, h.ackedPacketsInfo, h.lostPacketsInfo)
-		// Notify the congestion controller about the lowest unacked packet number
-		// to allow cleanup of obsolete packet state data.
-		if lowestUnacked := h.hist.FirstPacketNumber(); lowestUnacked != protocol.InvalidPacketNumber {
-			cc.extended.OnPacketsLost(congestionExt.PacketNumber(lowestUnacked))
-		}
+		h.notifyLeastUnacked(cc)
 	}
 
 	// After this point, we must not use ackedPackets any longer!
@@ -1063,14 +1108,14 @@ func (h *sentPacketHandler) detectLostPackets(now monotime.Time, encLevel protoc
 				if !p.IsPathMTUProbePacket {
 					h.connStats.PacketsLost.Add(1)
 					h.connStats.BytesLost.Add(int64(p.Length))
-					if cc != nil {
+					if cc == nil {
+						h.congestion.OnCongestionEvent(pn)
+					} else if cc.reports(pn, p) {
 						cc.OnCongestionEvent(congestionExt.PacketNumber(pn), congestionExt.ByteCount(p.Length), congestionExt.ByteCount(priorInFlight))
 						h.lostPacketsInfo = append(h.lostPacketsInfo, congestionExt.LostPacketInfo{
 							PacketNumber: congestionExt.PacketNumber(pn),
 							BytesLost:    congestionExt.ByteCount(p.Length),
 						})
-					} else {
-						h.congestion.OnCongestionEvent(pn)
 					}
 				}
 			}
@@ -1115,6 +1160,7 @@ func (h *sentPacketHandler) OnLossDetectionTimeout(now monotime.Time) error {
 		h.detectLostPackets(now, encLevel, cc)
 		if cc != nil && cc.extended != nil && len(h.lostPacketsInfo) != 0 {
 			cc.extended.OnCongestionEventEx(congestionExt.ByteCount(priorInFlight), now, nil, h.lostPacketsInfo)
+			h.notifyLeastUnacked(cc)
 		}
 		h.connStats.CongestionWindow.Store(uint64(h.congestionWindow(cc)))
 		return nil
@@ -1262,12 +1308,14 @@ func (h *sentPacketHandler) SendMode(now monotime.Time) SendMode {
 		if h.logger.Debug() {
 			h.logger.Debugf("Congestion limited: bytes in flight %d, window %d", h.bytesInFlight, h.congestionWindow(cc))
 		}
+		h.lastNetworkLimitedTime = now
 		return SendAck
 	}
 	if numTrackedPackets >= protocol.MaxOutstandingSentPackets {
 		if h.logger.Debug() {
 			h.logger.Debugf("Max outstanding limited: tracking %d packets, maximum: %d", numTrackedPackets, protocol.MaxOutstandingSentPackets)
 		}
+		h.lastNetworkLimitedTime = now
 		return SendAck
 	}
 	var hasPacingBudget bool
@@ -1277,6 +1325,7 @@ func (h *sentPacketHandler) SendMode(now monotime.Time) SendMode {
 		hasPacingBudget = h.congestion.HasPacingBudget(now)
 	}
 	if !hasPacingBudget {
+		h.lastNetworkLimitedTime = now
 		return SendPacingLimited
 	}
 	return SendAny
@@ -1292,10 +1341,15 @@ func (h *sentPacketHandler) TimeUntilSend() monotime.Time {
 func (h *sentPacketHandler) SetMaxDatagramSize(s protocol.ByteCount) {
 	h.maxDatagramSize = s
 	h.congestion.SetMaxDatagramSize(s)
-	cc := h.getInjectedCongestionControl()
-	if cc != nil {
-		cc.SetMaxDatagramSize(congestionExt.ByteCount(s))
+	h.injectedCongestionMutex.Lock()
+	cc := h.injectedCongestion
+	if s > h.largestMaxDatagramSize {
+		h.largestMaxDatagramSize = s
+		if cc != nil {
+			cc.SetMaxDatagramSize(congestionExt.ByteCount(s))
+		}
 	}
+	h.injectedCongestionMutex.Unlock()
 	h.connStats.CongestionWindow.Store(uint64(h.congestionWindow(cc)))
 }
 
@@ -1397,6 +1451,7 @@ func (h *sentPacketHandler) MigratedPath(now monotime.Time, initialMaxDatagramSi
 	h.timeThresholdEighths = defaultTimeThresholdEighths
 	h.minPNToRelaxReordering = protocol.InvalidPacketNumber
 	h.lostPackets.Reset()
+	cc := h.getInjectedCongestionControl()
 	for pn, p := range h.hist.Packets() {
 		if p.EncryptionLevel.PacketNumberSpace() != protocol.PacketNumberSpaceAppData {
 			continue
@@ -1404,6 +1459,7 @@ func (h *sentPacketHandler) MigratedPath(now monotime.Time, initialMaxDatagramSi
 		h.hist.DeclareLost(pn)
 		if !p.isPathProbePacket {
 			h.removeFromBytesInFlight(p)
+			h.neuterPacket(cc, pn, p)
 			if p.IsAckEliciting() {
 				h.queueFramesForRetransmission(p)
 			}
@@ -1413,7 +1469,8 @@ func (h *sentPacketHandler) MigratedPath(now monotime.Time, initialMaxDatagramSi
 		h.hist.RemovePathProbe(pn)
 	}
 	h.congestion = congestion.NewRenoSender(h.rttStats, initialMaxDatagramSize, h.qlogger)
-	h.connStats.CongestionWindow.Store(uint64(h.congestionWindow(h.getInjectedCongestionControl())))
+	h.maxDatagramSize = initialMaxDatagramSize
+	h.connStats.CongestionWindow.Store(uint64(h.congestionWindow(cc)))
 	if h.ecnTracker != nil {
 		h.ecnTracker.MigratedPath(oldPathDrainTime)
 	}
@@ -1428,14 +1485,24 @@ func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionCont
 		installed.extended = ccEx
 	}
 	h.injectedCongestionMutex.Lock()
+	installed.firstPacketNumber = h.largestSentPacketNumber + 1
+	cc.SetMaxDatagramSize(congestionExt.ByteCount(h.largestMaxDatagramSize))
 	h.injectedCongestion = installed
 	h.injectedCongestionMutex.Unlock()
 }
 
-func (h *sentPacketHandler) MaybeNotifyAppLimited() {
-	cc := h.getInjectedCongestionControl()
-	// Only notify if cwnd still has room (true app-limited condition)
-	if cc != nil && cc.extended != nil && cc.CanSend(congestionExt.ByteCount(h.bytesInFlight)) {
-		cc.extended.OnAppLimited(congestionExt.ByteCount(h.bytesInFlight))
+// Chromium reports application-limited from QuicConnection::CheckIfApplicationLimited while
+// its stream send buffers still hold everything the application queued, so an empty packet
+// creator there means the application is out of data. SendStream.Write hands the packer one
+// call's worth of data at a time, so the packer also runs empty between the Write calls of a
+// sender that the network holds back.
+func (h *sentPacketHandler) MaybeNotifyAppLimited(now monotime.Time) {
+	if now.Sub(h.lastNetworkLimitedTime) < h.rttStats.SmoothedRTT() {
+		return
 	}
+	cc := h.getInjectedCongestionControl()
+	if cc == nil || cc.extended == nil || !cc.CanSend(congestionExt.ByteCount(h.bytesInFlight)) {
+		return
+	}
+	cc.extended.OnAppLimited(congestionExt.ByteCount(h.bytesInFlight))
 }
