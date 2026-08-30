@@ -101,7 +101,7 @@ type sentPacketHandler struct {
 	bytesInFlight protocol.ByteCount
 
 	nextCongestionPacketNumber atomic.Int64
-	lastNetworkLimitedTime     monotime.Time
+	packerEmptyTime            monotime.Time
 
 	congestion      congestionControl
 	congestionMutex sync.RWMutex
@@ -138,6 +138,8 @@ type sentPacketHandler struct {
 }
 
 var _ SentPacketHandler = &sentPacketHandler{}
+
+const appLimitedThreshold = protocol.MinPacingDelay + protocol.TimerGranularity
 
 // clientAddressValidated indicates whether the address was validated beforehand by an address validation token.
 // If the address was validated, the amplification limit doesn't apply. It has no effect for a client.
@@ -368,6 +370,12 @@ func (h *sentPacketHandler) SentPacket(
 	}
 
 	if cc.injected {
+		if !h.packerEmptyTime.IsZero() {
+			if cc.extended != nil && t.Sub(h.packerEmptyTime) >= appLimitedThreshold && cc.CanSend(priorInFlight) {
+				cc.extended.OnAppLimited(priorInFlight)
+			}
+			h.packerEmptyTime = 0
+		}
 		cc.OnPacketSent(t, priorInFlight, p.congestionPacketNumber, size, isAckEliciting)
 	} else {
 		cc.OnPacketSent(t, h.bytesInFlight, pn, size, isAckEliciting)
@@ -1151,18 +1159,15 @@ func (h *sentPacketHandler) SendMode(now monotime.Time) SendMode {
 		if h.logger.Debug() {
 			h.logger.Debugf("Congestion limited: bytes in flight %d, window %d", h.bytesInFlight, cc.GetCongestionWindow())
 		}
-		h.lastNetworkLimitedTime = now
 		return SendAck
 	}
 	if numTrackedPackets >= protocol.MaxOutstandingSentPackets {
 		if h.logger.Debug() {
 			h.logger.Debugf("Max outstanding limited: tracking %d packets, maximum: %d", numTrackedPackets, protocol.MaxOutstandingSentPackets)
 		}
-		h.lastNetworkLimitedTime = now
 		return SendAck
 	}
 	if !cc.HasPacingBudget(now) {
-		h.lastNetworkLimitedTime = now
 		return SendPacingLimited
 	}
 	return SendAny
@@ -1342,14 +1347,10 @@ func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionCont
 // its stream send buffers still hold everything the application queued, so an empty packet
 // creator there means the application is out of data. SendStream.Write hands the packer one
 // call's worth of data at a time, so the packer also runs empty between the Write calls of a
-// sender that the network holds back.
-func (h *sentPacketHandler) MaybeNotifyAppLimited(now monotime.Time) {
-	if now.Sub(h.lastNetworkLimitedTime) < h.rttStats.SmoothedRTT() {
-		return
+// sender that keeps up with the pacer. The report is made on the next packet sent, when the
+// packer has stayed empty for longer than the burst the pacer allows.
+func (h *sentPacketHandler) MaybeNotifyAppLimited() {
+	if h.packerEmptyTime.IsZero() {
+		h.packerEmptyTime = monotime.Now()
 	}
-	cc := h.getCongestionControl()
-	if cc.extended == nil || !cc.CanSend(h.bytesInFlight) {
-		return
-	}
-	cc.extended.OnAppLimited(h.bytesInFlight)
 }
