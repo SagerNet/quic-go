@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/netip"
@@ -327,12 +328,16 @@ func (c *oobConn) ReadPacket() (Packet, error) {
 
 		n, err := c.batchConn.ReadBatch(c.messages, 0)
 		if n == 0 || err != nil {
+			c.messages = c.messages[:0]
 			return Packet{}, err
 		}
 		c.messages = c.messages[:n]
 	}
 
 	msg := c.messages[c.readPos]
+	if msg.N == 0 && isUDPEOF(c.sysConn) {
+		return Packet{}, io.EOF
+	}
 	buffer := c.buffers[c.readPos]
 	c.readPos++
 	if c.onRead != nil {
