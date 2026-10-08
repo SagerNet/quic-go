@@ -3213,3 +3213,17 @@ func (c *Conn) SetRemoteAddr(addr net.Addr) {
 func (c *Conn) Config() *Config {
 	return c.config
 }
+
+// MaxDatagramPayloadSize returns the current maximum allowed payload size for a QUIC datagram.
+// This value may change over time as path MTU discovery progresses.
+func (c *Conn) MaxDatagramPayloadSize() int64 {
+	if !c.supportsDatagrams() {
+		return 0
+	}
+	f := &wire.DatagramFrame{DataLenPresent: true}
+	maxDataLen := min(
+		f.MaxDataLen(c.peerMaxDatagramFrameSize(), c.version),
+		protocol.ByteCount(c.maxPayloadSizeEstimate.Load()),
+	)
+	return int64(maxDataLen)
+}
