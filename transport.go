@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -294,6 +295,10 @@ func (t *Transport) dial(ctx context.Context, addr net.Addr, host string, tlsCon
 		// The auto-tuning ceilings must not sit below the starting windows.
 		conf.MaxStreamReceiveWindow = max(conf.MaxStreamReceiveWindow, conf.InitialStreamReceiveWindow)
 		conf.MaxConnectionReceiveWindow = max(conf.MaxConnectionReceiveWindow, conf.InitialConnectionReceiveWindow)
+		remoteAddr, hasAddrPort := addr.(interface{ AddrPort() netip.AddrPort })
+		if hasAddrPort && remoteAddr.AddrPort().Addr().Unmap().Is6() {
+			conf.InitialPacketSize = chromeInitialPacketSizeIPv6
+		}
 	}
 	return t.doDial(ctx,
 		newSendConn(t.conn, addr, udp.PacketInfo{}, utils.DefaultLogger),
