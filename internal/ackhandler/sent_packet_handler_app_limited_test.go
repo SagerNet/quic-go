@@ -56,7 +56,7 @@ func (c *appLimitedController) InRecovery() bool                   { return fals
 func newAppLimitedHandler() (*sentPacketHandler, *appLimitedController) {
 	logger := utils.DefaultLogger.WithPrefix("isolated-handler-test")
 	logger.SetLogLevel(utils.LogLevelNothing)
-	h := NewSentPacketHandler(0, 1200, utils.NewRTTStats(), &utils.ConnectionStats{}, true, false, func(protocol.PacketNumber) {}, protocol.PerspectiveClient, false, nil, logger).(*sentPacketHandler)
+	h := NewSentPacketHandler(0, 1200, utils.NewRTTStats(), &utils.ConnectionStats{}, true, false, func(protocol.PacketNumber) {}, protocol.PerspectiveClient, false, nil, logger, new(AppLimitedReadiness)).(*sentPacketHandler)
 	h.peerCompletedAddressValidation = true
 	c := &appLimitedController{canSend: true}
 	h.SetCongestionControl(c)
@@ -67,10 +67,10 @@ func newAppLimitedHandler() (*sentPacketHandler, *appLimitedController) {
 // inject only its already-observed timestamp state, with the identical rule
 // "set if zero". No production branch, packet flag or notification is mocked.
 func recordEmptyAt(h *sentPacketHandler, at monotime.Time) {
-	if h.packerEmptyTime.IsZero() {
-		h.MaybeNotifyAppLimited()
-		if !h.packerEmptyTime.IsZero() {
-			h.packerEmptyTime = at
+	if h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
+		h.MaybeNotifyAppLimited(h.appLimitedReadiness.BeginProbe())
+		if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
+			h.appLimitedReadiness.start = at
 		}
 	}
 }
@@ -99,16 +99,16 @@ func sendTestPacket(h *sentPacketHandler, at monotime.Time, pn int, kind string)
 }
 func TestAppLimitedEmptyNotificationPreservesFirstTimestamp(t *testing.T) {
 	h, _ := newAppLimitedHandler()
-	if !h.packerEmptyTime.IsZero() {
+	if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 		t.Fatal("unexpected initial mark")
 	}
-	h.MaybeNotifyAppLimited()
-	first := h.packerEmptyTime
+	h.MaybeNotifyAppLimited(h.appLimitedReadiness.BeginProbe())
+	first := h.appLimitedReadiness.observation(monotime.Now()).start
 	if first.IsZero() {
 		t.Fatal("no timestamp")
 	}
-	h.MaybeNotifyAppLimited()
-	if h.packerEmptyTime != first {
+	h.MaybeNotifyAppLimited(h.appLimitedReadiness.BeginProbe())
+	if h.appLimitedReadiness.observation(monotime.Now()).start != first {
 		t.Fatal("repeated empty event moved timestamp")
 	}
 }
@@ -143,7 +143,7 @@ func TestAppLimitedCallbackOrderingUsesPriorInFlight(t *testing.T) {
 func TestAppLimitedNoEmptyMarker(t *testing.T) {
 	h, c := newAppLimitedHandler()
 	sendTestPacket(h, monotime.Now().Add(time.Hour), 1, "stream")
-	if c.notifications != 0 || !h.packerEmptyTime.IsZero() {
+	if c.notifications != 0 || !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 		t.Fatal("unmarked send notified")
 	}
 }
@@ -156,12 +156,12 @@ func TestAppLimitedACKCadence(t *testing.T) {
 	// This handler test does not substitute for a packet-packer integration test.
 	for i := 1; i <= protocol.MaxNonAckElicitingAcks; i++ {
 		sendTestPacket(h, base.Add(time.Duration(i)*500*time.Microsecond), i, "ack-only")
-		if h.packerEmptyTime != base || c.notifications != 0 || c.sent[len(c.sent)-1] {
+		if h.appLimitedReadiness.observation(monotime.Now()).start != base || c.notifications != 0 || c.sent[len(c.sent)-1] {
 			t.Fatal("pure ACK consumed or reported the idle observation")
 		}
 	}
 	sendTestPacket(h, base.Add(10*time.Millisecond), 20, "ping")
-	if c.notifications != 1 || !h.packerEmptyTime.IsZero() || !c.sent[len(c.sent)-1] {
+	if c.notifications != 1 || !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() || !c.sent[len(c.sent)-1] {
 		t.Fatal("ACK+PING did not consume the eligible observation")
 	}
 }
@@ -176,7 +176,7 @@ func TestAppLimitedThreshold(t *testing.T) {
 			if delay >= appLimitedThreshold {
 				want = 1
 			}
-			if c.notifications != want || !h.packerEmptyTime.IsZero() {
+			if c.notifications != want || !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 				t.Fatalf("notifications=%d want%d", c.notifications, want)
 			}
 		})
@@ -191,7 +191,7 @@ func TestAppLimitedNonExtendedController(t *testing.T) {
 	base := monotime.Now()
 	recordEmptyAt(h, base)
 	sendTestPacket(h, base.Add(5*time.Millisecond), 1, "stream")
-	if c.notifications != 0 || len(c.sent) != 1 || !h.packerEmptyTime.IsZero() {
+	if c.notifications != 0 || len(c.sent) != 1 || !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 		t.Fatal("base controller behavior changed")
 	}
 }
@@ -205,8 +205,8 @@ func TestAppLimitedRejectForbiddenArming(t *testing.T) {
 			} else {
 				h.numProbesToSend = 1
 			}
-			h.MaybeNotifyAppLimited()
-			if !h.packerEmptyTime.IsZero() {
+			h.MaybeNotifyAppLimited(h.appLimitedReadiness.BeginProbe())
+			if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 				t.Fatal("forbidden empty marker armed")
 			}
 		})
@@ -220,7 +220,7 @@ func TestAppLimitedQuietBlockedEpoch(t *testing.T) {
 	if h.SendMode(base.Add(time.Millisecond)) != SendAck {
 		t.Fatal("did not exercise real blocked mode")
 	}
-	if !h.packerEmptyTime.IsZero() {
+	if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 		t.Error("observed blocking retained old marker")
 	}
 	c.canSend = true
@@ -244,7 +244,7 @@ func TestAppLimitedSilentACKPermissionTransition(t *testing.T) {
 	if c.canSend {
 		t.Fatal("controller callback did not deny sending")
 	}
-	if !h.packerEmptyTime.IsZero() {
+	if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 		t.Error("ACK callback denial retained old marker")
 	}
 	allowed := true
@@ -282,7 +282,7 @@ func TestAppLimitedHardLimits(t *testing.T) {
 			if got := h.SendMode(base.Add(time.Millisecond)); got != want {
 				t.Fatalf("mode=%v want=%v", got, want)
 			}
-			if !h.packerEmptyTime.IsZero() {
+			if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 				t.Fatal("hard limit retained empty marker")
 			}
 		})
@@ -346,7 +346,7 @@ func TestAppLimitedLifecycleInvalidation(t *testing.T) {
 				h.ptoCount = 1
 				h.ResetForRetry(base.Add(time.Millisecond))
 			}
-			if !h.packerEmptyTime.IsZero() {
+			if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 				t.Fatal("path lifecycle retained old empty interval")
 			}
 		})
@@ -360,7 +360,7 @@ func TestAppLimitedPacingKeepsEligibleEmptyMarker(t *testing.T) {
 	if h.SendMode(base.Add(time.Millisecond)) != SendPacingLimited {
 		t.Fatal("pacing path not exercised")
 	}
-	if h.packerEmptyTime != base {
+	if h.appLimitedReadiness.observation(monotime.Now()).start != base {
 		t.Fatal("pacing alone invalidated eligible empty marker")
 	}
 	c.pacing = false
@@ -375,7 +375,25 @@ func TestAppLimitedRetransmissionQueueInvalidatesMarker(t *testing.T) {
 	recordEmptyAt(h, base)
 	p := &packet{Frames: []Frame{{Frame: &wire.PingFrame{}}}}
 	h.queueFramesForRetransmission(p)
-	if !h.packerEmptyTime.IsZero() {
+	if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
 		t.Fatal("retransmission scheduling retained application-empty evidence")
+	}
+}
+
+func TestAppLimitedControllerChangeDuringPublication(t *testing.T) {
+	h, _ := newAppLimitedHandler()
+	recordEmptyAt(h, monotime.Now().Add(-time.Second))
+	h.appLimitedReadiness.BeginPublication()
+	c := &appLimitedController{canSend: true}
+	h.SetCongestionControl(c)
+	h.SendMode(monotime.Now())
+	h.MaybeNotifyAppLimited(h.appLimitedReadiness.BeginProbe())
+	if !h.appLimitedReadiness.observation(monotime.Now()).start.IsZero() {
+		t.Fatal("controller change rearmed during active publication")
+	}
+	h.appLimitedReadiness.EndPublication()
+	sendTestPacket(h, monotime.Now().Add(time.Second), 1, "stream")
+	if c.notifications != 0 {
+		t.Fatal("controller inherited old or unpublished epoch")
 	}
 }

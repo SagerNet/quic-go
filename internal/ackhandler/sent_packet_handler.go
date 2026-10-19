@@ -101,8 +101,7 @@ type sentPacketHandler struct {
 	bytesInFlight protocol.ByteCount
 
 	nextCongestionPacketNumber atomic.Int64
-	packerEmptyTime            monotime.Time
-	packerEmptyGeneration      uint64
+	appLimitedReadiness        *AppLimitedReadiness
 
 	congestion      congestionControl
 	congestionMutex sync.RWMutex
@@ -156,6 +155,7 @@ func NewSentPacketHandler(
 	shortPacketNumbers bool,
 	qlogger qlogwriter.Recorder,
 	logger utils.Logger,
+	readiness *AppLimitedReadiness,
 ) SentPacketHandler {
 	congestion := congestion.NewCubicSender(
 		congestion.DefaultClock{},
@@ -182,6 +182,7 @@ func NewSentPacketHandler(
 		perspective:                    pers,
 		qlogger:                        qlogger,
 		logger:                         logger,
+		appLimitedReadiness:            readiness,
 	}
 	if enableECN {
 		h.enableECN = true
@@ -371,11 +372,12 @@ func (h *sentPacketHandler) SentPacket(
 	}
 
 	if cc.injected {
-		if !h.packerEmptyTime.IsZero() {
-			if h.packerEmptyGeneration != cc.generation || !cc.CanSend(priorInFlight) {
+		observation := h.appLimitedReadiness.observation(t)
+		if !observation.start.IsZero() {
+			if observation.generation != cc.generation || !cc.CanSend(priorInFlight) {
 				h.ResetAppLimited()
 			} else if isAckEliciting {
-				if cc.extended != nil && t.Sub(h.packerEmptyTime) >= appLimitedThreshold {
+				if cc.extended != nil && observation.end.Sub(observation.start) >= appLimitedThreshold {
 					cc.extended.OnAppLimited(priorInFlight)
 				}
 				h.ResetAppLimited()
@@ -1364,41 +1366,30 @@ func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionCont
 }
 
 func (h *sentPacketHandler) invalidateAppLimitedIfBlocked() {
-	if h.packerEmptyTime.IsZero() {
+	observation := h.appLimitedReadiness.observation(monotime.Now())
+	if observation.start.IsZero() {
 		return
 	}
 	cc := h.getCongestionControl()
-	if h.packerEmptyGeneration != cc.generation || !cc.CanSend(h.bytesInFlight) {
+	if observation.generation != cc.generation || !cc.CanSend(h.bytesInFlight) {
 		h.ResetAppLimited()
 	}
 }
 
-// Chromium reports application-limited from QuicConnection::CheckIfApplicationLimited while
-// its stream send buffers still hold everything the application queued, so an empty packet
-// creator there means the application is out of data. SendStream.Write hands the packer one
-// call's worth of data at a time, so the packer also runs empty between the Write calls of a
-// sender that keeps up with the pacer. The report is made on the next packet sent, when the
-// packer has stayed empty for longer than the burst the pacer allows.
-// Pending empty observations belong to one congestion-permitted controller epoch.
-// Pacing is deliberately not an invalidation event: ACK service itself can
-// consume pacing budget while the application has no sendable data.
-// TODO: cap the empty duration at first data readiness. Send time can include
-// time spent with queued data waiting for pacing; this draft does not yet
-// provide the synchronized publication contract needed to distinguish it.
-func (h *sentPacketHandler) MaybeNotifyAppLimited() {
+// MaybeNotifyAppLimited records an empty ordinary pack attempt only if its
+// publication token is still valid. A first-readiness cap prevents subsequent
+// paced queue time from being counted as application-empty time.
+func (h *sentPacketHandler) MaybeNotifyAppLimited(probe AppLimitedProbe) {
 	cc := h.getCongestionControl()
 	if !cc.CanSend(h.bytesInFlight) || h.numProbesToSend > 0 {
 		h.ResetAppLimited()
 		return
 	}
-	if h.packerEmptyTime.IsZero() || h.packerEmptyGeneration != cc.generation {
-		h.packerEmptyTime = monotime.Now()
-		h.packerEmptyGeneration = cc.generation
-	}
+	h.appLimitedReadiness.observeEmpty(probe, cc.generation)
 }
 
 // ResetAppLimited invalidates a pending empty observation on the connection loop.
 // SetCongestionControl does not call this: controller changes are detected by generation.
 func (h *sentPacketHandler) ResetAppLimited() {
-	h.packerEmptyTime = 0
+	h.appLimitedReadiness.reset()
 }

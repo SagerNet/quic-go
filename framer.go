@@ -30,7 +30,8 @@ type streamControlFrameGetter interface {
 }
 
 type framer struct {
-	mutex sync.Mutex
+	readiness *ackhandler.AppLimitedReadiness
+	mutex     sync.Mutex
 
 	activeStreams            map[protocol.StreamID]streamFrameGetter
 	streamQueue              ringbuffer.RingBuffer[protocol.StreamID]
@@ -43,11 +44,12 @@ type framer struct {
 	queuedTooManyControlFrames bool
 }
 
-func newFramer(connFlowController *connectionFlowController) *framer {
+func newFramer(connFlowController *connectionFlowController, readiness *ackhandler.AppLimitedReadiness) *framer {
 	return &framer{
 		activeStreams:            make(map[protocol.StreamID]streamFrameGetter),
 		streamsWithControlFrames: make(map[protocol.StreamID]streamControlFrameGetter),
 		connFlowController:       connFlowController,
+		readiness:                readiness,
 	}
 }
 
@@ -58,6 +60,14 @@ func (f *framer) HasData() bool {
 	if hasData {
 		return true
 	}
+	f.controlFrameMutex.Lock()
+	defer f.controlFrameMutex.Unlock()
+	return len(f.streamsWithControlFrames) > 0 || len(f.controlFrames) > 0 || len(f.pathResponses) > 0
+}
+
+// HasQueuedControlFrames distinguishes pending control backlog from STREAMs
+// that remain active while blocked by flow control or an application limiter.
+func (f *framer) HasQueuedControlFrames() bool {
 	f.controlFrameMutex.Lock()
 	defer f.controlFrameMutex.Unlock()
 	return len(f.streamsWithControlFrames) > 0 || len(f.controlFrames) > 0 || len(f.pathResponses) > 0
@@ -74,7 +84,9 @@ func (f *framer) QueueControlFrame(frame wire.Frame) {
 		if len(f.pathResponses) >= maxPathResponses {
 			return
 		}
+		f.readiness.BeginPublication()
 		f.pathResponses = append(f.pathResponses, pr)
+		f.readiness.EndPublication()
 		return
 	}
 	// This is a hack.
@@ -82,7 +94,9 @@ func (f *framer) QueueControlFrame(frame wire.Frame) {
 		f.queuedTooManyControlFrames = true
 		return
 	}
+	f.readiness.BeginPublication()
 	f.controlFrames = append(f.controlFrames, frame)
+	f.readiness.EndPublication()
 }
 
 func (f *framer) Append(
@@ -118,7 +132,9 @@ func (f *framer) Append(
 			l := blocked.Length(v)
 			// In case it doesn't fit, queue it for the next packet.
 			if maxLen < l {
+				f.readiness.BeginPublication()
 				f.controlFrames = append(f.controlFrames, blocked)
+				f.readiness.EndPublication()
 				break
 			}
 			frames = append(frames, ackhandler.Frame{Frame: blocked})
@@ -136,7 +152,9 @@ func (f *framer) Append(
 			frames = append(frames, ackhandler.Frame{Frame: blocked})
 			controlFrameLen += l
 		} else {
+			f.readiness.BeginPublication()
 			f.controlFrames = append(f.controlFrames, blocked)
+			f.readiness.EndPublication()
 		}
 	}
 

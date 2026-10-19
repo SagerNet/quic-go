@@ -153,6 +153,7 @@ type Conn struct {
 
 	cryptoStreamManager   *cryptoStreamManager
 	sentPacketHandler     ackhandler.SentPacketHandler
+	appLimitedReadiness   *ackhandler.AppLimitedReadiness
 	receivedPacketHandler ackhandler.ReceivedPacketHandler
 	retransmissionQueue   *retransmissionQueue
 	framer                *framer
@@ -322,6 +323,7 @@ var newConnection = func(
 		false, // servers keep quic-go's 2-byte packet number floor
 		s.qlogger,
 		s.logger,
+		s.appLimitedReadiness,
 	)
 	s.maxPayloadSizeEstimate.Store(uint32(estimateMaxPayloadSize(protocol.ByteCount(s.config.InitialPacketSize))))
 	statelessResetToken := statelessResetter.GetStatelessResetToken(srcConnID)
@@ -455,6 +457,7 @@ var newClientConnection = func(
 		s.config.ChromeParrot,
 		s.qlogger,
 		s.logger,
+		s.appLimitedReadiness,
 	)
 	s.maxPayloadSizeEstimate.Store(uint32(estimateMaxPayloadSize(protocol.ByteCount(s.config.InitialPacketSize))))
 	oneRTTStream := newCryptoStream()
@@ -525,11 +528,12 @@ var newClientConnection = func(
 }
 
 func (c *Conn) preSetup() {
+	c.appLimitedReadiness = new(ackhandler.AppLimitedReadiness)
 	c.largestRcvdAppData = protocol.InvalidPacketNumber
 	c.initialStream = newInitialCryptoStream(c.perspective == protocol.PerspectiveClient, c.config.ChromeParrot)
 	c.handshakeStream = newCryptoStream()
 	c.sendQueue = newSendQueue(c.conn)
-	c.retransmissionQueue = newRetransmissionQueue()
+	c.retransmissionQueue = newRetransmissionQueue(c.appLimitedReadiness)
 	c.frameParser = *wire.NewFrameParser(
 		c.config.EnableDatagrams,
 		c.config.EnableStreamResetPartialDelivery,
@@ -548,6 +552,7 @@ func (c *Conn) preSetup() {
 		c.rttStats,
 		c.logger,
 	)
+	c.connFlowController.appLimitedReadiness = c.appLimitedReadiness
 	c.earlyConnReadyChan = make(chan struct{})
 	c.streamsMap = newStreamsMap(
 		c.ctx,
@@ -558,7 +563,7 @@ func (c *Conn) preSetup() {
 		uint64(c.config.MaxIncomingUniStreams),
 		c.perspective,
 	)
-	c.framer = newFramer(c.connFlowController)
+	c.framer = newFramer(c.connFlowController, c.appLimitedReadiness)
 	c.receivedPackets.Init(8)
 	c.notifyReceivedPacket = make(chan struct{}, 1)
 	c.closeChan = make(chan struct{}, 1)
@@ -571,7 +576,7 @@ func (c *Conn) preSetup() {
 
 	c.receivedPacketHandler = *ackhandler.NewReceivedPacketHandler(c.logger)
 
-	c.datagramQueue = newDatagramQueue(c.scheduleSending, c.logger)
+	c.datagramQueue = newDatagramQueue(c.scheduleSending, c.logger, c.appLimitedReadiness)
 	c.connState.Version = c.version
 }
 
@@ -2536,6 +2541,7 @@ func (c *Conn) sendPackets(now monotime.Time) error {
 		if pm := c.pathManagerOutgoing.Load(); pm != nil {
 			connID, frame, tr, ok := pm.NextPathToProbe()
 			if ok {
+				c.sentPacketHandler.ResetAppLimited()
 				probe, buf, err := c.packer.PackPathProbePacket(connID, []ackhandler.Frame{frame}, c.version)
 				if err != nil {
 					return err
@@ -2556,6 +2562,7 @@ func (c *Conn) sendPackets(now monotime.Time) error {
 	// Performance-wise, this doesn't matter, since we only send a very small (<10) number of
 	// MTU probe packets per connection.
 	if c.handshakeConfirmed && c.mtuDiscoverer != nil && c.mtuDiscoverer.ShouldSendProbe(now) {
+		c.sentPacketHandler.ResetAppLimited()
 		ping, size := c.mtuDiscoverer.GetPing(now)
 		p, buf, err := c.packer.PackMTUProbePacket(ping, size, c.version)
 		if err != nil {
@@ -2570,6 +2577,8 @@ func (c *Conn) sendPackets(now monotime.Time) error {
 		return nil
 	}
 
+	// Cover auxiliary work materialized before the packet loop as well as packing.
+	probe := c.appLimitedReadiness.BeginProbe()
 	if offset := c.connFlowController.GetWindowUpdate(now); offset > 0 {
 		c.framer.QueueControlFrame(&wire.MaxDataFrame{MaximumData: offset})
 	}
@@ -2597,19 +2606,19 @@ func (c *Conn) sendPackets(now monotime.Time) error {
 	}
 
 	if c.conn.capabilities().GSO {
-		return c.sendPacketsWithGSO(now)
+		return c.sendPacketsWithGSO(now, probe)
 	}
-	return c.sendPacketsWithoutGSO(now)
+	return c.sendPacketsWithoutGSO(now, probe)
 }
 
-func (c *Conn) sendPacketsWithoutGSO(now monotime.Time) error {
+func (c *Conn) sendPacketsWithoutGSO(now monotime.Time, probe ackhandler.AppLimitedProbe) error {
 	for {
 		buf := getPacketBuffer()
 		ecn := c.sentPacketHandler.ECNMode(true)
 		if _, err := c.appendOneShortHeaderPacket(buf, c.maxPacketSize(), ecn, now); err != nil {
 			if err == errNothingToPack {
 				buf.Release()
-				c.sentPacketHandler.MaybeNotifyAppLimited()
+				c.maybeNotifyAppLimited(probe)
 				return nil
 			}
 			return err
@@ -2639,7 +2648,7 @@ func (c *Conn) sendPacketsWithoutGSO(now monotime.Time) error {
 	}
 }
 
-func (c *Conn) sendPacketsWithGSO(now monotime.Time) error {
+func (c *Conn) sendPacketsWithGSO(now monotime.Time, probe ackhandler.AppLimitedProbe) error {
 	buf := getLargePacketBuffer()
 	maxSize := c.maxPacketSize()
 
@@ -2651,7 +2660,7 @@ func (c *Conn) sendPacketsWithGSO(now monotime.Time) error {
 			if err != errNothingToPack {
 				return err
 			}
-			c.sentPacketHandler.MaybeNotifyAppLimited()
+			c.maybeNotifyAppLimited(probe)
 			if buf.Len() == 0 {
 				buf.Release()
 				return nil
@@ -3047,6 +3056,9 @@ func (c *Conn) queueControlFrame(f wire.Frame) {
 
 func (c *Conn) onHasConnectionData() { c.scheduleSending() }
 
+func (c *Conn) beginAppDataPublication() { c.appLimitedReadiness.BeginPublication() }
+func (c *Conn) endAppDataPublication()   { c.appLimitedReadiness.EndPublication() }
+
 func (c *Conn) onHasStreamData(id protocol.StreamID, str *SendStream) {
 	c.framer.AddActiveStream(id, str)
 	c.scheduleSending()
@@ -3221,4 +3233,17 @@ func (c *Conn) SetRemoteAddr(addr net.Addr) {
 // Config Return current config
 func (c *Conn) Config() *Config {
 	return c.config
+}
+
+// A packer miss can also mean that queued work did not fit or that auxiliary
+// work has not yet been materialized. Only an actually empty set of sources
+// can start a new idle interval. Active STREAMs blocked by flow control or an
+// application limiter may still be application limited.
+func (c *Conn) maybeNotifyAppLimited(probe ackhandler.AppLimitedProbe) {
+	if c.connFlowController.HasPendingWindowUpdate() || c.cryptoStreamManager.oneRTTStream.HasData() ||
+		c.framer.HasQueuedControlFrames() || c.retransmissionQueue.HasData(protocol.Encryption1RTT) || c.datagramQueue.Peek() != nil {
+		c.sentPacketHandler.ResetAppLimited()
+		return
+	}
+	c.sentPacketHandler.MaybeNotifyAppLimited(probe)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/sagernet/quic-go/internal/ackhandler"
 	"github.com/sagernet/quic-go/internal/utils"
 	"github.com/sagernet/quic-go/internal/utils/ringbuffer"
 	"github.com/sagernet/quic-go/internal/wire"
@@ -15,6 +16,7 @@ const (
 )
 
 type datagramQueue struct {
+	readiness *ackhandler.AppLimitedReadiness
 	sendMx    sync.Mutex
 	sendQueue ringbuffer.RingBuffer[*wire.DatagramFrame]
 	sent      chan struct{} // used to notify Add that a datagram was dequeued
@@ -31,13 +33,14 @@ type datagramQueue struct {
 	logger utils.Logger
 }
 
-func newDatagramQueue(hasData func(), logger utils.Logger) *datagramQueue {
+func newDatagramQueue(hasData func(), logger utils.Logger, readiness *ackhandler.AppLimitedReadiness) *datagramQueue {
 	return &datagramQueue{
-		hasData: hasData,
-		rcvd:    make(chan struct{}, 1),
-		sent:    make(chan struct{}, 1),
-		closed:  make(chan struct{}),
-		logger:  logger,
+		hasData:   hasData,
+		readiness: readiness,
+		rcvd:      make(chan struct{}, 1),
+		sent:      make(chan struct{}, 1),
+		closed:    make(chan struct{}),
+		logger:    logger,
 	}
 }
 
@@ -49,7 +52,9 @@ func (h *datagramQueue) Add(f *wire.DatagramFrame) error {
 
 	for {
 		if h.sendQueue.Len() < maxDatagramSendQueueLen {
+			h.readiness.BeginPublication()
 			h.sendQueue.PushBack(f)
+			h.readiness.EndPublication()
 			h.sendMx.Unlock()
 			h.hasData()
 			return nil

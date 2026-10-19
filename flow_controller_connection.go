@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/sagernet/quic-go/internal/ackhandler"
 	"github.com/sagernet/quic-go/internal/monotime"
 	"github.com/sagernet/quic-go/internal/protocol"
 	"github.com/sagernet/quic-go/internal/qerr"
@@ -13,6 +14,9 @@ import (
 
 type connectionFlowController struct {
 	receiveFlowController
+
+	// Installed before streams are exposed. Standalone flow controllers can omit it.
+	appLimitedReadiness *ackhandler.AppLimitedReadiness
 
 	// Protects send-side state, which TryWriteAll can access from application goroutines.
 	sendMutex     sync.Mutex
@@ -66,8 +70,18 @@ func (c *connectionFlowController) AddBytesRead(n protocol.ByteCount) (hasWindow
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	if c.appLimitedReadiness != nil && !c.hasWindowUpdate() && windowUpdateAfterRead(&c.receiveFlowController, n) {
+		c.appLimitedReadiness.BeginPublication()
+		defer c.appLimitedReadiness.EndPublication()
+	}
 	c.addBytesRead(n)
 	return c.hasWindowUpdate()
+}
+
+// windowUpdateAfterRead predicts the same threshold as hasWindowUpdate without
+// publishing the counter change first. The caller must hold the flow-control lock.
+func windowUpdateAfterRead(c *receiveFlowController, n protocol.ByteCount) bool {
+	return c.receiveWindow-(c.bytesRead+n) <= protocol.ByteCount(float64(c.receiveWindowSize)*(1-protocol.WindowUpdateThreshold))
 }
 
 // TryAddBytesSent adds n bytes if sufficient connection-level send credit is available.
@@ -108,6 +122,10 @@ func (c *connectionFlowController) UpdateSendWindow(offset protocol.ByteCount) (
 	defer c.sendMutex.Unlock()
 
 	if offset > c.sendWindow {
+		if c.appLimitedReadiness != nil {
+			c.appLimitedReadiness.BeginPublication()
+			defer c.appLimitedReadiness.EndPublication()
+		}
 		c.sendWindow = offset
 		return true
 	}
@@ -158,6 +176,11 @@ func (c *connectionFlowController) EnsureMinimumWindowSize(inc protocol.ByteCoun
 	}
 	newSize := min(inc, c.maxReceiveWindowSize)
 	if delta := newSize - c.receiveWindowSize; delta > 0 && c.allowWindowIncrease(delta) {
+		if c.appLimitedReadiness != nil && !c.hasWindowUpdate() &&
+			c.receiveWindow-c.bytesRead <= protocol.ByteCount(float64(newSize)*(1-protocol.WindowUpdateThreshold)) {
+			c.appLimitedReadiness.BeginPublication()
+			defer c.appLimitedReadiness.EndPublication()
+		}
 		c.receiveWindowSize = newSize
 		if c.logger.Debug() {
 			c.logger.Debugf("Increasing receive flow control window for the connection to %d, in response to stream flow control window increase", newSize)
@@ -183,4 +206,10 @@ func (c *connectionFlowController) Reset() error {
 	c.lastBlockedAt = 0
 	c.sendWindow = 0
 	return nil
+}
+
+func (c *connectionFlowController) HasPendingWindowUpdate() bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.hasWindowUpdate()
 }

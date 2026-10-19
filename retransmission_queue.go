@@ -14,14 +14,16 @@ type framesToRetransmit struct {
 }
 
 type retransmissionQueue struct {
+	readiness *ackhandler.AppLimitedReadiness
 	initial   *framesToRetransmit
 	handshake *framesToRetransmit
 	appData   framesToRetransmit
 }
 
-func newRetransmissionQueue() *retransmissionQueue {
+func newRetransmissionQueue(readiness *ackhandler.AppLimitedReadiness) *retransmissionQueue {
 	return &retransmissionQueue{
 		initial:   &framesToRetransmit{},
+		readiness: readiness,
 		handshake: &framesToRetransmit{},
 	}
 }
@@ -30,6 +32,8 @@ func (q *retransmissionQueue) addInitial(f wire.Frame) {
 	if q.initial == nil {
 		return
 	}
+	q.readiness.BeginPublication()
+	defer q.readiness.EndPublication()
 	if cf, ok := f.(*wire.CryptoFrame); ok {
 		q.initial.crypto = append(q.initial.crypto, cf)
 		return
@@ -41,6 +45,8 @@ func (q *retransmissionQueue) addHandshake(f wire.Frame) {
 	if q.handshake == nil {
 		return
 	}
+	q.readiness.BeginPublication()
+	defer q.readiness.EndPublication()
 	if cf, ok := f.(*wire.CryptoFrame); ok {
 		q.handshake.crypto = append(q.handshake.crypto, cf)
 		return
@@ -49,6 +55,8 @@ func (q *retransmissionQueue) addHandshake(f wire.Frame) {
 }
 
 func (q *retransmissionQueue) addAppData(f wire.Frame) {
+	q.readiness.BeginPublication()
+	defer q.readiness.EndPublication()
 	switch f := f.(type) {
 	case *wire.StreamFrame:
 		panic("STREAM frames are handled with their respective streams.")

@@ -29,15 +29,16 @@ func (c *backpressureController) InRecovery() bool                   { return fa
 func TestSendQueueBackpressureInvalidatesAppLimited(t *testing.T) {
 	logger := utils.DefaultLogger.WithPrefix("writer-queue-unit")
 	logger.SetLogLevel(utils.LogLevelNothing)
-	h := ackhandler.NewSentPacketHandler(0, 1200, utils.NewRTTStats(), &utils.ConnectionStats{}, true, false, func(protocol.PacketNumber) {}, protocol.PerspectiveClient, false, nil, logger)
+	readiness := new(ackhandler.AppLimitedReadiness)
+	h := ackhandler.NewSentPacketHandler(0, 1200, utils.NewRTTStats(), &utils.ConnectionStats{}, true, false, func(protocol.PacketNumber) {}, protocol.PerspectiveClient, false, nil, logger, readiness)
 	cc := &backpressureController{}
 	h.SetCongestionControl(cc)
 	q := newSendQueue(nil).(*sendQueue)
-	c := &Conn{sentPacketHandler: h, sendQueue: q}
+	c := &Conn{sentPacketHandler: h, sendQueue: q, appLimitedReadiness: readiness}
 
 	// Exercise the real bounded sendQueue without starting its writer or a socket.
 	base := monotime.Now()
-	h.MaybeNotifyAppLimited()
+	h.MaybeNotifyAppLimited(readiness.BeginProbe())
 	for i := 0; i < sendQueueCapacity; i++ {
 		q.Send(getPacketBuffer(), 0, protocol.ECNNon)
 	}
@@ -53,7 +54,7 @@ func TestSendQueueBackpressureInvalidatesAppLimited(t *testing.T) {
 		t.Fatal("writer-blocked interval leaked into application-limited notification")
 	}
 	// An available writer must not erase a genuinely empty observation.
-	h.MaybeNotifyAppLimited()
+	h.MaybeNotifyAppLimited(readiness.BeginProbe())
 	base = monotime.Now()
 	if c.sendQueueWouldBlock() {
 		t.Fatal("empty queue reported blocked")
