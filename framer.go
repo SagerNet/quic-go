@@ -97,6 +97,12 @@ func newFramer(connFlowController *connectionFlowController) *framer {
 	}
 }
 
+func (f *framer) HasUnblockedStreamData() bool {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return len(f.activeStreams) > 0 || len(f.retransmissionStreams) > 0
+}
+
 func (f *framer) HasData() bool {
 	f.controlFrameMutex.Lock()
 	hasControlFrames := len(f.streamsWithControlFrames) > 0 || len(f.controlFrames) > 0 || len(f.pathResponses) > 0
