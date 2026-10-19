@@ -727,7 +727,7 @@ runLoop:
 			}
 		}
 
-		if c.sendQueue.WouldBlock() {
+		if c.sendQueueWouldBlock() {
 			// The send queue is still busy sending out packets. Wait until there's space to enqueue new packets.
 			sendQueueAvailable = c.sendQueue.Available()
 			// Cancel the pacing timer, as we can't send any more packets until the send queue is available again.
@@ -745,7 +745,7 @@ runLoop:
 			c.setCloseError(&closeError{err: err})
 			break runLoop
 		}
-		if c.sendQueue.WouldBlock() {
+		if c.sendQueueWouldBlock() {
 			// The send queue is still busy sending out packets. Wait until there's space to enqueue new packets.
 			sendQueueAvailable = c.sendQueue.Available()
 			// Cancel the pacing timer, as we can't send any more packets until the send queue is available again.
@@ -2482,6 +2482,15 @@ func (c *Conn) applyTransportParameters() {
 	)
 }
 
+// Observe local writer backpressure even when no SendMode call follows.
+func (c *Conn) sendQueueWouldBlock() bool {
+	if !c.sendQueue.WouldBlock() {
+		return false
+	}
+	c.sentPacketHandler.ResetAppLimited()
+	return true
+}
+
 func (c *Conn) triggerSending(now monotime.Time) error {
 	c.pacingDeadline = 0
 
@@ -2512,7 +2521,7 @@ func (c *Conn) triggerSending(now monotime.Time) error {
 		if err := c.sendProbePacket(sendMode, now); err != nil {
 			return err
 		}
-		if c.sendQueue.WouldBlock() {
+		if c.sendQueueWouldBlock() {
 			c.scheduleSending()
 			return nil
 		}
@@ -2608,7 +2617,7 @@ func (c *Conn) sendPacketsWithoutGSO(now monotime.Time) error {
 
 		c.sendQueue.Send(buf, 0, ecn)
 
-		if c.sendQueue.WouldBlock() {
+		if c.sendQueueWouldBlock() {
 			return nil
 		}
 		sendMode := c.sentPacketHandler.SendMode(now)
@@ -2677,7 +2686,7 @@ func (c *Conn) sendPacketsWithGSO(now monotime.Time) error {
 		if dontSendMore {
 			return nil
 		}
-		if c.sendQueue.WouldBlock() {
+		if c.sendQueueWouldBlock() {
 			return nil
 		}
 
