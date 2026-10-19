@@ -224,8 +224,8 @@ func TestReadinessConnectionSendCreditTransitions(t *testing.T) {
 	r := new(ackhandler.AppLimitedReadiness)
 	c := newReceiveReadinessFlow(100, r)
 	before := r.BeginProbe()
-	if !c.UpdateSendWindow(100) || r.BeginProbe() == before {
-		t.Fatal("increased send credit did not publish readiness")
+	if !c.UpdateSendWindow(100) || r.BeginProbe() != before {
+		t.Fatal("credit bookkeeping without queued work published readiness")
 	}
 	before = r.BeginProbe()
 	if c.UpdateSendWindow(100) || c.UpdateSendWindow(99) || r.BeginProbe() != before {

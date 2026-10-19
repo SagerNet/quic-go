@@ -704,6 +704,44 @@ func (s *SendStream) enableResetStreamAt() {
 	s.mutex.Unlock()
 }
 
+// hasUnreservedDataForFlowControl is evaluated with s.mutex held. Reserved
+// frames, retransmissions and FIN do not need new flow-control credit. A known
+// limiter rejection is unsendable; an unevaluated limiter must not be called
+// speculatively here because its callback commits external credit.
+func (s *SendStream) hasUnreservedDataForFlowControl() bool {
+	if s.shutdownErr != nil || s.writeLimited || len(s.retransmissionQueue) > 0 {
+		return false
+	}
+	if s.resetErr != nil && (s.reliableOffset() == 0 || s.writeOffset >= s.reliableOffset()) {
+		return false
+	}
+	if s.nextFrame != nil {
+		return !s.nextFrameReserved && s.nextFrame.DataLen() > 0
+	}
+	return len(s.dataForWriting) > 0
+}
+
+// updateConnectionSendWindow is called with the framer lock held. A successful
+// result means the window was handled, not necessarily that it changed.
+func (s *SendStream) updateConnectionSendWindow(limit protocol.ByteCount) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if !s.hasUnreservedDataForFlowControl() || s.flowController.sendWindow <= s.flowController.bytesSent {
+		return false
+	}
+	c := s.flowController.connection
+	c.sendMutex.Lock()
+	defer c.sendMutex.Unlock()
+	if limit > c.sendWindow {
+		if c.sendWindow <= c.bytesSent && limit > c.bytesSent {
+			s.sender.beginAppDataPublication()
+			defer s.sender.endAppDataPublication()
+		}
+		c.sendWindow = limit
+	}
+	return true
+}
+
 func (s *SendStream) updateSendWindow(limit protocol.ByteCount) {
 	s.mutex.Lock()
 	if limit <= s.flowController.sendWindow {
@@ -711,13 +749,21 @@ func (s *SendStream) updateSendWindow(limit protocol.ByteCount) {
 		return
 	}
 	hasStreamData := s.dataForWriting != nil || s.nextFrame != nil
-	if hasStreamData {
+	c := s.flowController.connection
+	c.sendMutex.Lock()
+	publish := s.hasUnreservedDataForFlowControl() &&
+		s.flowController.sendWindow <= s.flowController.bytesSent && limit > s.flowController.bytesSent &&
+		c.sendWindow > c.bytesSent
+	if publish {
 		s.sender.beginAppDataPublication()
 	}
 	s.flowController.UpdateSendWindow(limit)
+	c.sendMutex.Unlock()
 	s.mutex.Unlock()
 	if hasStreamData {
 		s.sender.onHasStreamData(s.streamID, s)
+	}
+	if publish {
 		s.sender.endAppDataPublication()
 	}
 }

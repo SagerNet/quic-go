@@ -23,6 +23,7 @@ const maxStreamControlFrameSize = 25
 
 type streamFrameGetter interface {
 	popStreamFrame(protocol.ByteCount, protocol.Version) (ackhandler.StreamFrame, *wire.StreamDataBlockedFrame, bool)
+	updateConnectionSendWindow(protocol.ByteCount) bool
 }
 
 type streamControlFrameGetter interface {
@@ -51,6 +52,24 @@ func newFramer(connFlowController *connectionFlowController, readiness *ackhandl
 		connFlowController:       connFlowController,
 		readiness:                readiness,
 	}
+}
+
+// UpdateConnectionSendWindow only publishes readiness when exhausted credit
+// unblocks eligible queued STREAM data. Keep the established framer -> stream ->
+// connection-flow-control lock order, and hold the qualifying stream through the
+// credit change so cancellation or reservation cannot stale the decision.
+func (f *framer) UpdateConnectionSendWindow(offset protocol.ByteCount) {
+	if f.connFlowController.updateSendWindowWithoutUnblocking(offset) {
+		return
+	}
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	for _, stream := range f.activeStreams {
+		if stream.updateConnectionSendWindow(offset) {
+			return
+		}
+	}
+	f.connFlowController.UpdateSendWindow(offset)
 }
 
 func (f *framer) HasData() bool {

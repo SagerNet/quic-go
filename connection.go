@@ -1955,7 +1955,7 @@ func (c *Conn) handleFrame(
 	case *wire.ResetStreamFrame:
 		err = c.streamsMap.HandleResetStreamFrame(frame, rcvTime)
 	case *wire.MaxDataFrame:
-		c.connFlowController.UpdateSendWindow(frame.MaximumData)
+		c.framer.UpdateConnectionSendWindow(frame.MaximumData)
 	case *wire.MaxStreamDataFrame:
 		err = c.streamsMap.HandleMaxStreamDataFrame(frame)
 	case *wire.MaxStreamsFrame:
@@ -2389,7 +2389,7 @@ func (c *Conn) restoreTransportParameters(params *wire.TransportParameters) {
 
 	c.peerParams = params
 	c.connIDGenerator.SetMaxActiveConnIDs(params.ActiveConnectionIDLimit)
-	c.connFlowController.UpdateSendWindow(params.InitialMaxData)
+	c.framer.UpdateConnectionSendWindow(params.InitialMaxData)
 	c.streamsMap.HandleTransportParameters(params)
 }
 
@@ -2464,7 +2464,7 @@ func (c *Conn) applyTransportParameters() {
 	c.keepAliveInterval = min(c.config.KeepAlivePeriod, c.idleTimeout/2)
 	c.streamsMap.HandleTransportParameters(params)
 	c.frameParser.SetAckDelayExponent(params.AckDelayExponent)
-	c.connFlowController.UpdateSendWindow(params.InitialMaxData)
+	c.framer.UpdateConnectionSendWindow(params.InitialMaxData)
 	c.rttStats.SetMaxAckDelay(params.MaxAckDelay)
 	c.connIDGenerator.SetMaxActiveConnIDs(params.ActiveConnectionIDLimit)
 	if params.StatelessResetToken != nil {

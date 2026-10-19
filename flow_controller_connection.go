@@ -116,20 +116,34 @@ func (c *connectionFlowController) AddBytesSentWithLimiter(
 	return added, added < n
 }
 
-// UpdateSendWindow is called after receiving a MAX_DATA frame.
+// UpdateSendWindow changes credit without asserting that queued work is ready.
+// Connections route peer credit through the framer, which can identify a stream
+// actually unblocked by the update while holding its source lock.
 func (c *connectionFlowController) UpdateSendWindow(offset protocol.ByteCount) (updated bool) {
 	c.sendMutex.Lock()
 	defer c.sendMutex.Unlock()
 
 	if offset > c.sendWindow {
-		if c.appLimitedReadiness != nil {
-			c.appLimitedReadiness.BeginPublication()
-			defer c.appLimitedReadiness.EndPublication()
-		}
 		c.sendWindow = offset
 		return true
 	}
 	return false
+}
+
+// updateSendWindowWithoutUnblocking handles updates that cannot turn exhausted
+// connection credit into available credit. The check and update are atomic with
+// reservations made by other streams.
+func (c *connectionFlowController) updateSendWindowWithoutUnblocking(offset protocol.ByteCount) bool {
+	c.sendMutex.Lock()
+	defer c.sendMutex.Unlock()
+	if offset <= c.sendWindow {
+		return true
+	}
+	if c.sendWindow <= c.bytesSent && offset > c.bytesSent {
+		return false
+	}
+	c.sendWindow = offset
+	return true
 }
 
 func (c *connectionFlowController) SendWindowSize() protocol.ByteCount {

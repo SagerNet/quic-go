@@ -354,7 +354,7 @@ func TestReadinessFlowControlBlockedInterval(t *testing.T) {
 			if scope == "stream" {
 				s.updateSendWindow(1000)
 			} else {
-				c.connFlowController.UpdateSendWindow(1000)
+				c.framer.UpdateConnectionSendWindow(1000)
 			}
 			if err := c.triggerSending(monotime.Now()); err != nil {
 				t.Fatal(err)
