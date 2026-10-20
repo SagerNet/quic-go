@@ -105,7 +105,12 @@ func IsSendMsgSizeErr(err error) bool {
 	return errors.Is(err, unix.EMSGSIZE)
 }
 
-func IsRecvMsgSizeErr(error) bool { return false }
+// A connected UDP socket reports an ICMP Fragmentation Needed or Packet Too Big message for one of its
+// datagrams as EMSGSIZE from the next send call, or the next receive call that finds the receive buffer
+// empty (udp_ctlinput and udp6_ctlinput in XNU).
+func IsRecvMsgSizeErr(err error) bool {
+	return errors.Is(err, unix.EMSGSIZE)
+}
 
 func getMacOSVersion() (int, error) {
 	uname := &unix.Utsname{}

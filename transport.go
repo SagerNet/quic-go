@@ -584,8 +584,9 @@ func (t *Transport) listen(conn udp.Conn) {
 			continue
 		}
 		if err != nil {
-			// Windows returns an error when receiving a UDP datagram that doesn't fit into the provided buffer.
-			if udp.IsRecvMsgSizeErr(err) {
+			// Windows returns an error when receiving a UDP datagram that doesn't fit into the provided buffer,
+			// Linux and darwin when an ICMP Packet Too Big or Port Unreachable arrives for a datagram sent on a connected socket.
+			if udp.IsRecvMsgSizeErr(err) || udp.IsConnRefusedErr(err) {
 				continue
 			}
 			t.close(err)
