@@ -142,6 +142,7 @@ func (s *SendStream) TryWriteAll(p []byte) error {
 	}
 	if hasData {
 		s.sender.onHasStreamData(s.streamID, s)
+		s.sender.endAppDataPublication()
 	}
 	return err
 }
@@ -173,6 +174,7 @@ func (s *SendStream) tryWriteAll(p []byte) (bool /* is newly completed */, bool 
 		return false, false, ErrWouldBlock
 	}
 
+	s.sender.beginAppDataPublication()
 	if s.nextFrame == nil {
 		s.nextFrame = wire.GetStreamFrame()
 		s.nextFrame.Offset = s.writeOffset
@@ -228,6 +230,13 @@ func (s *SendStream) write(p []byte, limiter func(int) int) (bool /* is newly co
 		return false, 0, nil
 	}
 
+	s.sender.beginAppDataPublication()
+	publicationPending := true
+	defer func() {
+		if publicationPending {
+			s.sender.endAppDataPublication()
+		}
+	}()
 	s.dataForWriting = p
 
 	var (
@@ -288,6 +297,8 @@ func (s *SendStream) write(p []byte, limiter func(int) int) (bool /* is newly co
 		s.mutex.Unlock()
 		if !notifiedSender {
 			s.sender.onHasStreamData(s.streamID, s) // must be called without holding the mutex
+			s.sender.endAppDataPublication()
+			publicationPending = false
 			notifiedSender = true
 		}
 		if copied {
@@ -555,8 +566,11 @@ func (s *SendStream) Close() error {
 		s.mutex.Unlock()
 		return nil
 	}
-	s.finishedWriting = true
 	cancelled := s.resetErr != nil
+	if !cancelled {
+		s.sender.beginAppDataPublication()
+	}
+	s.finishedWriting = true
 	if cancelled {
 		s.cancellationFlagged = true
 	}
@@ -570,6 +584,7 @@ func (s *SendStream) Close() error {
 		return fmt.Errorf("close called for canceled stream %d", s.streamID)
 	}
 	s.sender.onHasStreamData(s.streamID, s) // need to send the FIN, must be called without holding the mutex
+	s.sender.endAppDataPublication()
 
 	s.ctxCancel(nil)
 	return nil
@@ -629,6 +644,7 @@ func (s *SendStream) CancelWrite(errorCode StreamErrorCode) {
 		}
 		return
 	}
+	s.sender.beginAppDataPublication()
 	s.resetErr = &StreamError{StreamID: s.streamID, ErrorCode: errorCode, Remote: false}
 	s.ctxCancel(s.resetErr)
 
@@ -679,6 +695,7 @@ func (s *SendStream) CancelWrite(errorCode StreamErrorCode) {
 
 	s.signalWrite()
 	s.sender.onHasStreamControlFrame(s.streamID, s)
+	s.sender.endAppDataPublication()
 }
 
 func (s *SendStream) enableResetStreamAt() {
@@ -687,17 +704,67 @@ func (s *SendStream) enableResetStreamAt() {
 	s.mutex.Unlock()
 }
 
+// hasUnreservedDataForFlowControl is evaluated with s.mutex held. Reserved
+// frames, retransmissions and FIN do not need new flow-control credit. A known
+// limiter rejection is unsendable; an unevaluated limiter must not be called
+// speculatively here because its callback commits external credit.
+func (s *SendStream) hasUnreservedDataForFlowControl() bool {
+	if s.shutdownErr != nil || s.writeLimited || len(s.retransmissionQueue) > 0 {
+		return false
+	}
+	if s.resetErr != nil && (s.reliableOffset() == 0 || s.writeOffset >= s.reliableOffset()) {
+		return false
+	}
+	if s.nextFrame != nil {
+		return !s.nextFrameReserved && s.nextFrame.DataLen() > 0
+	}
+	return len(s.dataForWriting) > 0
+}
+
+// updateConnectionSendWindow is called with the framer lock held. A successful
+// result means the window was handled, not necessarily that it changed.
+func (s *SendStream) updateConnectionSendWindow(limit protocol.ByteCount) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if !s.hasUnreservedDataForFlowControl() || s.flowController.sendWindow <= s.flowController.bytesSent {
+		return false
+	}
+	c := s.flowController.connection
+	c.sendMutex.Lock()
+	defer c.sendMutex.Unlock()
+	if limit > c.sendWindow {
+		if c.sendWindow <= c.bytesSent && limit > c.bytesSent {
+			s.sender.beginAppDataPublication()
+			defer s.sender.endAppDataPublication()
+		}
+		c.sendWindow = limit
+	}
+	return true
+}
+
 func (s *SendStream) updateSendWindow(limit protocol.ByteCount) {
 	s.mutex.Lock()
-	updated := s.flowController.UpdateSendWindow(limit)
-	if !updated { // duplicate or reordered MAX_STREAM_DATA frame
+	if limit <= s.flowController.sendWindow {
 		s.mutex.Unlock()
 		return
 	}
 	hasStreamData := s.dataForWriting != nil || s.nextFrame != nil
+	c := s.flowController.connection
+	c.sendMutex.Lock()
+	publish := s.hasUnreservedDataForFlowControl() &&
+		s.flowController.sendWindow <= s.flowController.bytesSent && limit > s.flowController.bytesSent &&
+		c.sendWindow > c.bytesSent
+	if publish {
+		s.sender.beginAppDataPublication()
+	}
+	s.flowController.UpdateSendWindow(limit)
+	c.sendMutex.Unlock()
 	s.mutex.Unlock()
 	if hasStreamData {
 		s.sender.onHasStreamData(s.streamID, s)
+	}
+	if publish {
+		s.sender.endAppDataPublication()
 	}
 }
 
@@ -714,6 +781,7 @@ func (s *SendStream) handleStopSendingFrame(f *wire.StopSendingFrame) {
 		s.mutex.Unlock()
 		return
 	}
+	s.sender.beginAppDataPublication()
 	// if the peer stopped reading from the stream, there's no need to transmit any data reliably
 	s.reliableSize = 0
 	s.numOutstandingFrames = 0
@@ -735,6 +803,7 @@ func (s *SendStream) handleStopSendingFrame(f *wire.StopSendingFrame) {
 
 	s.signalWrite()
 	s.sender.onHasStreamControlFrame(s.streamID, s)
+	s.sender.endAppDataPublication()
 }
 
 func (s *SendStream) getControlFrame(monotime.Time) (_ ackhandler.Frame, ok, hasMore bool) {
@@ -865,11 +934,13 @@ func (s *sendStreamAckHandler) OnLost(f wire.Frame) {
 		}
 	}
 
+	s.sender.beginAppDataPublication()
 	sf.DataLenPresent = true
 	s.retransmissionQueue = append(s.retransmissionQueue, sf)
 	s.mutex.Unlock()
 
 	s.sender.onHasStreamData(s.streamID, (*SendStream)(s))
+	s.sender.endAppDataPublication()
 }
 
 type sendStreamResetStreamHandler SendStream
@@ -908,8 +979,10 @@ func (s *sendStreamResetStreamHandler) OnLost(f wire.Frame) {
 		s.mutex.Unlock()
 		return
 	}
+	s.sender.beginAppDataPublication()
 	s.queuedResetStreamFrame = rsf
 	s.numOutstandingFrames--
 	s.mutex.Unlock()
 	s.sender.onHasStreamControlFrame(s.streamID, (*SendStream)(s))
+	s.sender.endAppDataPublication()
 }

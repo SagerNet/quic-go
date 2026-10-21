@@ -117,8 +117,21 @@ func (s *ReceiveStream) Read(p []byte) (int, error) {
 	s.readOnce <- struct{}{}
 	defer func() { <-s.readOnce }()
 
+	var publishingWindowUpdate bool
+	beginWindowUpdate := func() {
+		if !publishingWindowUpdate {
+			s.sender.beginAppDataPublication()
+			publishingWindowUpdate = true
+		}
+	}
+	defer func() {
+		if publishingWindowUpdate {
+			s.sender.endAppDataPublication()
+		}
+	}()
+
 	s.mutex.Lock()
-	queuedStreamWindowUpdate, queuedConnWindowUpdate, n, err := s.readImpl(p)
+	queuedStreamWindowUpdate, queuedConnWindowUpdate, n, err := s.readImpl(p, beginWindowUpdate)
 	completed := s.isNewlyCompleted()
 	s.mutex.Unlock()
 
@@ -127,6 +140,10 @@ func (s *ReceiveStream) Read(p []byte) (int, error) {
 	}
 	if queuedStreamWindowUpdate {
 		s.sender.onHasStreamControlFrame(s.streamID, s)
+	}
+	if publishingWindowUpdate {
+		s.sender.endAppDataPublication()
+		publishingWindowUpdate = false
 	}
 	if queuedConnWindowUpdate {
 		s.sender.onHasConnectionData()
@@ -155,7 +172,7 @@ func (s *ReceiveStream) isNewlyCompleted() bool {
 	return false
 }
 
-func (s *ReceiveStream) readImpl(p []byte) (hasStreamWindowUpdate bool, hasConnWindowUpdate bool, _ int, _ error) {
+func (s *ReceiveStream) readImpl(p []byte, beginWindowUpdate func()) (hasStreamWindowUpdate bool, hasConnWindowUpdate bool, _ int, _ error) {
 	if s.currentFrameIsLast && s.currentFrame == nil {
 		s.errorRead = true
 		return false, false, 0, io.EOF
@@ -227,7 +244,7 @@ func (s *ReceiveStream) readImpl(p []byte) (hasStreamWindowUpdate bool, hasConnW
 		// when a RESET_STREAM was received, the flow controller was already
 		// informed about the final offset for this stream
 		if !s.isRemoteCancellationEffective() {
-			hasStream, hasConn := s.flowController.AddBytesRead(protocol.ByteCount(m))
+			hasStream, hasConn := s.flowController.addBytesReadWithPublication(protocol.ByteCount(m), beginWindowUpdate)
 			if hasStream {
 				s.queuedMaxStreamData = true
 				hasStreamWindowUpdate = true
@@ -405,6 +422,7 @@ func (s *ReceiveStream) CancelRead(errorCode StreamErrorCode) {
 
 	if queuedNewControlFrame {
 		s.sender.onHasStreamControlFrame(s.streamID, s)
+		s.sender.endAppDataPublication()
 	}
 	if completed {
 		s.flowController.Abandon()
@@ -423,6 +441,7 @@ func (s *ReceiveStream) cancelReadImpl(errorCode qerr.StreamErrorCode) (queuedNe
 	if s.errorRead || s.cancelledRemotely {
 		return false
 	}
+	s.sender.beginAppDataPublication()
 	s.queuedStopSending = true
 	s.cancelErr = &StreamError{StreamID: s.streamID, ErrorCode: errorCode, Remote: false}
 	s.signalRead()

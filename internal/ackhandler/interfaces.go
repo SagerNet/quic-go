@@ -44,6 +44,9 @@ type SentPacketHandler interface {
 	SetCongestionControl(congestion.CongestionControl)
 
 	// MaybeNotifyAppLimited records that the packer has no data to send. The congestion
-	// controller is notified on the next sent packet.
-	MaybeNotifyAppLimited()
+	// controller is notified on the next ordinary ack-eliciting packet.
+	MaybeNotifyAppLimited(AppLimitedProbe)
+	// ResetAppLimited discards an observation invalidated by local send backpressure.
+	// Like MaybeNotifyAppLimited, it must run on the connection loop.
+	ResetAppLimited()
 }

@@ -101,7 +101,17 @@ func (c *streamFlowController) UpdateHighestReceived(offset protocol.ByteCount, 
 }
 
 func (c *streamFlowController) AddBytesRead(n protocol.ByteCount) (hasStreamWindowUpdate, hasConnWindowUpdate bool) {
+	return c.addBytesReadWithPublication(n, nil)
+}
+
+// addBytesReadWithPublication starts a stream-control publication before a newly available
+// window update becomes visible. The caller completes it after activating the
+// stream in the framer. It is never started merely because Read is waiting.
+func (c *streamFlowController) addBytesReadWithPublication(n protocol.ByteCount, beginStreamPublication func()) (hasStreamWindowUpdate, hasConnWindowUpdate bool) {
 	c.mutex.Lock()
+	if beginStreamPublication != nil && !c.receivedFinalOffset && !c.hasWindowUpdate() && windowUpdateAfterRead(&c.receiveFlowController, n) {
+		beginStreamPublication()
+	}
 	c.addBytesRead(n)
 	hasStreamWindowUpdate = c.shouldQueueWindowUpdate()
 	c.mutex.Unlock()

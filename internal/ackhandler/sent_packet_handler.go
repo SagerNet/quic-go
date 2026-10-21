@@ -101,7 +101,7 @@ type sentPacketHandler struct {
 	bytesInFlight protocol.ByteCount
 
 	nextCongestionPacketNumber atomic.Int64
-	packerEmptyTime            monotime.Time
+	appLimitedReadiness        *AppLimitedReadiness
 
 	congestion      congestionControl
 	congestionMutex sync.RWMutex
@@ -155,6 +155,7 @@ func NewSentPacketHandler(
 	shortPacketNumbers bool,
 	qlogger qlogwriter.Recorder,
 	logger utils.Logger,
+	readiness *AppLimitedReadiness,
 ) SentPacketHandler {
 	congestion := congestion.NewCubicSender(
 		congestion.DefaultClock{},
@@ -181,6 +182,7 @@ func NewSentPacketHandler(
 		perspective:                    pers,
 		qlogger:                        qlogger,
 		logger:                         logger,
+		appLimitedReadiness:            readiness,
 	}
 	if enableECN {
 		h.enableECN = true
@@ -370,11 +372,16 @@ func (h *sentPacketHandler) SentPacket(
 	}
 
 	if cc.injected {
-		if !h.packerEmptyTime.IsZero() {
-			if cc.extended != nil && t.Sub(h.packerEmptyTime) >= appLimitedThreshold && cc.CanSend(priorInFlight) {
-				cc.extended.OnAppLimited(priorInFlight)
+		observation := h.appLimitedReadiness.observation(t)
+		if !observation.start.IsZero() {
+			if observation.generation != cc.generation || !cc.CanSend(priorInFlight) {
+				h.ResetAppLimited()
+			} else if isAckEliciting {
+				if cc.extended != nil && observation.end.Sub(observation.start) >= appLimitedThreshold {
+					cc.extended.OnAppLimited(priorInFlight)
+				}
+				h.ResetAppLimited()
 			}
-			h.packerEmptyTime = 0
 		}
 		cc.OnPacketSent(t, priorInFlight, p.congestionPacketNumber, size, isAckEliciting)
 	} else {
@@ -458,6 +465,8 @@ func (h *sentPacketHandler) getPacketNumberSpace(encLevel protocol.EncryptionLev
 }
 
 func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.EncryptionLevel, rcvTime monotime.Time) (bool /* contained 1-RTT packet */, error) {
+	h.invalidateAppLimitedIfBlocked()
+	defer h.invalidateAppLimitedIfBlocked()
 	pnSpace := h.getPacketNumberSpace(encLevel)
 
 	largestAcked := ack.LargestAcked()
@@ -987,6 +996,8 @@ func (h *sentPacketHandler) detectLostPackets(now monotime.Time, encLevel protoc
 }
 
 func (h *sentPacketHandler) OnLossDetectionTimeout(now monotime.Time) error {
+	h.invalidateAppLimitedIfBlocked()
+	defer h.invalidateAppLimitedIfBlocked()
 	defer h.setLossDetectionTimer(now)
 
 	if h.handshakeConfirmed {
@@ -1128,6 +1139,7 @@ func (h *sentPacketHandler) PopPacketNumber(encLevel protocol.EncryptionLevel) p
 }
 
 func (h *sentPacketHandler) SendMode(now monotime.Time) SendMode {
+	h.invalidateAppLimitedIfBlocked()
 	numTrackedPackets := h.appDataPackets.history.Len()
 	if h.initialPackets != nil {
 		numTrackedPackets += h.initialPackets.history.Len()
@@ -1137,6 +1149,7 @@ func (h *sentPacketHandler) SendMode(now monotime.Time) SendMode {
 	}
 
 	if h.isAmplificationLimited() {
+		h.ResetAppLimited()
 		h.logger.Debugf("Amplification window limited. Received %d bytes, already sent out %d bytes", h.bytesReceived, h.bytesSent)
 		return SendNone
 	}
@@ -1145,12 +1158,14 @@ func (h *sentPacketHandler) SendMode(now monotime.Time) SendMode {
 	// we will stop sending out new data when reaching MaxOutstandingSentPackets,
 	// but still allow sending of retransmissions and ACKs.
 	if numTrackedPackets >= protocol.MaxTrackedSentPackets {
+		h.ResetAppLimited()
 		if h.logger.Debug() {
 			h.logger.Debugf("Limited by the number of tracked packets: tracking %d packets, maximum %d", numTrackedPackets, protocol.MaxTrackedSentPackets)
 		}
 		return SendNone
 	}
 	if h.numProbesToSend > 0 {
+		h.ResetAppLimited()
 		return h.ptoMode
 	}
 	// Only send ACKs if we're congestion limited.
@@ -1162,6 +1177,7 @@ func (h *sentPacketHandler) SendMode(now monotime.Time) SendMode {
 		return SendAck
 	}
 	if numTrackedPackets >= protocol.MaxOutstandingSentPackets {
+		h.ResetAppLimited()
 		if h.logger.Debug() {
 			h.logger.Debugf("Max outstanding limited: tracking %d packets, maximum: %d", numTrackedPackets, protocol.MaxOutstandingSentPackets)
 		}
@@ -1194,6 +1210,7 @@ func (h *sentPacketHandler) isAmplificationLimited() bool {
 }
 
 func (h *sentPacketHandler) QueueProbePacket(encLevel protocol.EncryptionLevel) bool {
+	h.ResetAppLimited()
 	pnSpace := h.getPacketNumberSpace(encLevel)
 	pn, p := pnSpace.history.FirstOutstanding()
 	if p == nil {
@@ -1209,6 +1226,7 @@ func (h *sentPacketHandler) QueueProbePacket(encLevel protocol.EncryptionLevel) 
 }
 
 func (h *sentPacketHandler) queueFramesForRetransmission(p *packet) {
+	h.ResetAppLimited()
 	if len(p.Frames) == 0 && len(p.StreamFrames) == 0 {
 		panic("no frames")
 	}
@@ -1227,6 +1245,7 @@ func (h *sentPacketHandler) queueFramesForRetransmission(p *packet) {
 }
 
 func (h *sentPacketHandler) ResetForRetry(now monotime.Time) {
+	h.ResetAppLimited()
 	h.bytesInFlight = 0
 	var firstPacketSendTime monotime.Time
 	for _, p := range h.initialPackets.history.Packets() {
@@ -1273,6 +1292,7 @@ func (h *sentPacketHandler) ResetForRetry(now monotime.Time) {
 }
 
 func (h *sentPacketHandler) MigratedPath(now monotime.Time, initialMaxDatagramSize protocol.ByteCount) {
+	h.ResetAppLimited()
 	h.rttStats.ResetForPathMigration()
 	cc := h.getCongestionControl()
 	for pn, p := range h.appDataPackets.history.Packets() {
@@ -1313,6 +1333,7 @@ type congestionControl struct {
 	// firstPacketNumber is the congestion packet number of the first packet sent after
 	// an injected send algorithm was installed; earlier packets are not reported to it.
 	firstPacketNumber protocol.PacketNumber
+	generation        uint64
 }
 
 func (cc congestionControl) reports(p *packet) bool {
@@ -1339,18 +1360,36 @@ func (h *sentPacketHandler) SetCongestionControl(cc congestionExt.CongestionCont
 	}
 	h.congestionMutex.Lock()
 	installed.firstPacketNumber = protocol.PacketNumber(h.nextCongestionPacketNumber.Load()) + 1
+	installed.generation = h.congestion.generation + 1
 	h.congestion = installed
 	h.congestionMutex.Unlock()
 }
 
-// Chromium reports application-limited from QuicConnection::CheckIfApplicationLimited while
-// its stream send buffers still hold everything the application queued, so an empty packet
-// creator there means the application is out of data. SendStream.Write hands the packer one
-// call's worth of data at a time, so the packer also runs empty between the Write calls of a
-// sender that keeps up with the pacer. The report is made on the next packet sent, when the
-// packer has stayed empty for longer than the burst the pacer allows.
-func (h *sentPacketHandler) MaybeNotifyAppLimited() {
-	if h.packerEmptyTime.IsZero() {
-		h.packerEmptyTime = monotime.Now()
+func (h *sentPacketHandler) invalidateAppLimitedIfBlocked() {
+	observation := h.appLimitedReadiness.observation(monotime.Now())
+	if observation.start.IsZero() {
+		return
 	}
+	cc := h.getCongestionControl()
+	if observation.generation != cc.generation || !cc.CanSend(h.bytesInFlight) {
+		h.ResetAppLimited()
+	}
+}
+
+// MaybeNotifyAppLimited records an empty ordinary pack attempt only if its
+// publication token is still valid. A first-readiness cap prevents subsequent
+// paced queue time from being counted as application-empty time.
+func (h *sentPacketHandler) MaybeNotifyAppLimited(probe AppLimitedProbe) {
+	cc := h.getCongestionControl()
+	if !cc.CanSend(h.bytesInFlight) || h.numProbesToSend > 0 {
+		h.ResetAppLimited()
+		return
+	}
+	h.appLimitedReadiness.observeEmpty(probe, cc.generation)
+}
+
+// ResetAppLimited invalidates a pending empty observation on the connection loop.
+// SetCongestionControl does not call this: controller changes are detected by generation.
+func (h *sentPacketHandler) ResetAppLimited() {
+	h.appLimitedReadiness.reset()
 }

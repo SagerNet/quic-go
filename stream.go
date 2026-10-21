@@ -24,6 +24,8 @@ var errDeadline net.Error = &deadlineError{}
 
 // The streamSender is notified by the stream about various events.
 type streamSender interface {
+	beginAppDataPublication()
+	endAppDataPublication()
 	onHasConnectionData()
 	onHasStreamData(protocol.StreamID, *SendStream)
 	onHasStreamControlFrame(protocol.StreamID, streamControlFrameGetter)
