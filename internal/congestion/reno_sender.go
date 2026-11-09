@@ -134,10 +134,10 @@ func (c *renoSender) OnPacketSent(
 	bytes protocol.ByteCount,
 	isRetransmittable bool,
 ) {
-	c.pacer.SentPacket(sentTime, bytes, c.pacingRate())
 	if !isRetransmittable {
 		return
 	}
+	c.pacer.SentPacket(sentTime, bytes, c.pacingRate())
 	c.largestSentPacketNumber = packetNumber
 	c.hybridSlowStart.OnPacketSent(packetNumber)
 }
