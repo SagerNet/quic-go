@@ -57,6 +57,16 @@ type IOActivityConn interface {
 	IOActivityFuncs() (onRead func(size int), onWrite func(size int))
 }
 
+// SetDesiredBufferSizes is expected to be called by the owner of a socket that a conn passed to
+// the Transport hides by not implementing syscall.Conn.
+func SetDesiredBufferSizes(c syscall.RawConn) {
+	if !isDatagramSocket(c) {
+		return
+	}
+	_ = setReceiveBuffer(c)
+	_ = setSendBuffer(c)
+}
+
 func wrapConn(pc net.PacketConn) (rawConn, error) {
 	var sysConn syscall.RawConn
 	syscallConn, isSyscallConn := pc.(syscall.Conn)
