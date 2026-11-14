@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/sagernet/quic-go/internal/protocol"
@@ -61,6 +62,12 @@ type OOBCapablePacketConn = udp.OOBCapablePacketConn
 // own methods; these callbacks are invoked instead: onRead with the size of every received packet,
 // onWrite with the number of bytes sent by every write.
 type IOActivityConn = udp.IOActivityConn
+
+// SetDesiredBufferSizes is expected to be called by the owner of a socket that a conn passed to
+// the Transport hides by not implementing syscall.Conn.
+func SetDesiredBufferSizes(c syscall.RawConn) {
+	udp.SetDesiredBufferSizes(c)
+}
 
 // The Transport is the central point to manage incoming and outgoing QUIC connections.
 // QUIC demultiplexes connections based on their QUIC Connection IDs, not based on the 4-tuple.

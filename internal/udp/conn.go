@@ -67,6 +67,15 @@ type IOActivityConn interface {
 	IOActivityFuncs() (onRead func(size int), onWrite func(size int))
 }
 
+// SetDesiredBufferSizes raises the socket buffer sizes of c, if it is a datagram socket.
+func SetDesiredBufferSizes(c syscall.RawConn) {
+	if !isDatagramSocket(c) {
+		return
+	}
+	_ = setReceiveBuffer(c)
+	_ = setSendBuffer(c)
+}
+
 // Wrap configures pc for UDP I/O.
 // If pc already implements Conn, it is returned unchanged.
 func Wrap(pc net.PacketConn) (Conn, error) {
