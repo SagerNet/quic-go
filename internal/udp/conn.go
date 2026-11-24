@@ -78,7 +78,7 @@ func SetDesiredBufferSizes(c syscall.RawConn) {
 
 // Wrap configures pc for UDP I/O.
 // If pc already implements Conn, it is returned unchanged.
-func Wrap(pc net.PacketConn) (Conn, error) {
+func Wrap(pc net.PacketConn, enableDF bool) (Conn, error) {
 	// Conn uses internal types, so only packages in this module (e.g. simnet) can implement it.
 	if c, ok := pc.(Conn); ok {
 		return c, nil
@@ -96,16 +96,19 @@ func Wrap(pc net.PacketConn) (Conn, error) {
 		utils.DefaultLogger.Infof("PacketConn is not a syscall.Conn. Disabling optimizations possible on UDP connections.")
 		// Assume DF is set so that DPLPMTUD keeps working; the socket behind a
 		// non-syscall conn is expected to have been configured by its owner.
-		return &basicConn{PacketConn: pc, supportsDF: true}, nil
+		return &basicConn{PacketConn: pc, supportsDF: enableDF}, nil
 	}
 	_ = setReceiveBuffer(sysConn)
 	_ = setSendBuffer(sysConn)
-	supportsDF := true
-	if isDatagramSocket(sysConn) {
-		var err error
-		supportsDF, err = setDF(sysConn)
-		if err != nil {
-			return nil, err
+	supportsDF := false
+	if enableDF {
+		supportsDF = true
+		if isDatagramSocket(sysConn) {
+			var err error
+			supportsDF, err = setDF(sysConn)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	conn, err := newConn(pc, sysConn, supportsDF)
