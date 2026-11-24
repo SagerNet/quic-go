@@ -32,7 +32,8 @@ const (
 	defaultMaxResponseHeaderBytes = 10 * 1 << 20 // 10 MB
 )
 
-var errGoAway = errors.New("connection in graceful shutdown")
+// ErrNoMoreStreams is returned when opening a request stream on a connection after the server sent GOAWAY.
+var ErrNoMoreStreams = errors.New("connection in graceful shutdown")
 
 type errConnUnusable struct{ e error }
 
@@ -150,18 +151,18 @@ func (c *ClientConn) openRequestStream(
 	// RFC 9114 Section 5.2 prohibits opening any new request streams after GOAWAY.
 	// The stream ID only identifies requests that were already in flight and might still be processed.
 	if c.goAwayCtx.Err() != nil {
-		return nil, errGoAway
+		return nil, ErrNoMoreStreams
 	}
 
 	openCtx, cancel := context.WithCancelCause(ctx)
 	// A request blocked in OpenStreamSync has no request stream yet, so it is not in flight.
-	stop := context.AfterFunc(c.goAwayCtx, func() { cancel(errGoAway) })
+	stop := context.AfterFunc(c.goAwayCtx, func() { cancel(ErrNoMoreStreams) })
 	str, err := c.conn.OpenStreamSync(openCtx)
 	stop()
 	cancel(nil)
 	if err != nil {
-		if context.Cause(openCtx) == errGoAway {
-			return nil, errGoAway
+		if context.Cause(openCtx) == ErrNoMoreStreams {
+			return nil, ErrNoMoreStreams
 		}
 		return nil, err
 	}
@@ -170,7 +171,7 @@ func (c *ClientConn) openRequestStream(
 	if c.goAwayCtx.Err() != nil {
 		str.CancelRead(quic.StreamErrorCode(ErrCodeRequestCanceled))
 		str.CancelWrite(quic.StreamErrorCode(ErrCodeRequestCanceled))
-		return nil, errGoAway
+		return nil, ErrNoMoreStreams
 	}
 
 	hstr := c.rawConn.TrackStream(str)
