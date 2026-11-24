@@ -135,6 +135,14 @@ type Transport struct {
 	// Recorder.Close is called when the transport is closed.
 	Tracer qlogwriter.Recorder
 
+	// PacketCodec transforms every packet sent and every datagram received on Conn.
+	// Setting it disables GSO.
+	PacketCodec PacketCodec
+
+	// PacketInterceptor is called with every datagram received on Conn, before PacketCodec.
+	// Returning true consumes the datagram. b is only valid during the call.
+	PacketInterceptor func(b []byte, addr net.Addr) bool
+
 	mutex       sync.Mutex
 	handlers    map[protocol.ConnectionID]packetHandler
 	resetTokens map[protocol.StatelessResetToken]packetHandler
@@ -399,11 +407,14 @@ func (t *Transport) init(allowZeroLengthConnIDs bool) error {
 			conn = c
 		} else {
 			var err error
-			conn, err = wrapConn(t.Conn)
+			conn, err = wrapConnWithDF(t.Conn, t.PacketCodec == nil)
 			if err != nil {
 				t.initErr = err
 				return
 			}
+		}
+		if t.PacketCodec != nil || t.PacketInterceptor != nil {
+			conn = &codecConn{rawConn: conn, codec: t.PacketCodec, interceptor: t.PacketInterceptor}
 		}
 
 		t.logger = utils.DefaultLogger // TODO: make this configurable
