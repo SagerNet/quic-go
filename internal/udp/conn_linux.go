@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/quic-go/quic-go/internal/utils"
+	"github.com/sagernet/quic-go/internal/utils"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 )

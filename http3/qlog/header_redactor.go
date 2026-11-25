@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/qlogwriter"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/qlogwriter"
 )
 
 // RedactHeaders wraps a QUIC connection tracer to redact HTTP/3 header and trailer field values.

@@ -8,7 +8,7 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/internal/protocol"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 

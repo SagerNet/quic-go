@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync/atomic"
 
-	"github.com/quic-go/quic-go/internal/udp"
-	"github.com/quic-go/quic-go/internal/utils"
+	"github.com/sagernet/quic-go/internal/udp"
+	"github.com/sagernet/quic-go/internal/utils"
 )
 
 // A closedLocalConn is a connection that we closed locally.

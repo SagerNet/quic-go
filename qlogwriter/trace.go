@@ -4,8 +4,8 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/qlogwriter/jsontext"
+	"github.com/sagernet/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/qlogwriter/jsontext"
 )
 
 type ConnectionID = protocol.ConnectionID
@@ -24,7 +24,7 @@ func init() {
 		return
 	}
 	for _, d := range info.Deps {
-		if d.Path == "github.com/quic-go/quic-go" {
+		if d.Path == "github.com/sagernet/quic-go" {
 			quicGoVersion = d.Version
 			if d.Replace != nil {
 				if len(d.Replace.Version) > 0 {

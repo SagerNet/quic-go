@@ -3,9 +3,9 @@ package congestion
 import (
 	"time"
 
-	congestionInternal "github.com/quic-go/quic-go/internal/congestion"
-	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/monotime"
+	congestionInternal "github.com/sagernet/quic-go/internal/congestion"
+	"github.com/sagernet/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/monotime"
 )
 
 type (

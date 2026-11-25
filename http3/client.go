@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/qlogwriter"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/qlogwriter"
 )
 
 const (

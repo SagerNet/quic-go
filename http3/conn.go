@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 
 	"github.com/quic-go/qpack"
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/http3/qlog"
-	"github.com/quic-go/quic-go/qlogwriter"
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/http3/qlog"
+	"github.com/sagernet/quic-go/qlogwriter"
+	"github.com/sagernet/quic-go/quicvarint"
 )
 
 const maxQuarterStreamID = 1<<60 - 1

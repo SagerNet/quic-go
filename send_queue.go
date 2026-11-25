@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net"
 
-	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/internal/udp"
+	"github.com/sagernet/quic-go/internal/protocol"
+	"github.com/sagernet/quic-go/internal/udp"
 )
 
 type sender interface {

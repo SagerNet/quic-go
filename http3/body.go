@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/quic-go/quic-go"
+	"github.com/sagernet/quic-go"
 )
 
 // Settingser allows waiting for and retrieving the peer's HTTP/3 settings.

@@ -3,9 +3,9 @@ package qlog
 import (
 	"time"
 
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/qlogwriter"
-	"github.com/quic-go/quic-go/qlogwriter/jsontext"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/qlogwriter"
+	"github.com/sagernet/quic-go/qlogwriter/jsontext"
 )
 
 // EventSchema is the qlog event schema for HTTP/3
