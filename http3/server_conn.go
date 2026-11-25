@@ -104,7 +104,7 @@ func (c *RawServerConn) handleRequestStream(str *stateTrackingStream) {
 	connCtx := c.serverContext
 
 	hstr := newServerStream(str, conn, c.qlogger)
-	req, err := hstr.readRequestHeader()
+	req, scheme, err := hstr.readRequestHeader()
 	if err != nil {
 		if errors.Is(err, errHeaderTooLarge) {
 			c.rejectWithHeaderFieldsTooLarge(hstr)
@@ -116,8 +116,10 @@ func (c *RawServerConn) handleRequestStream(str *stateTrackingStream) {
 		_ = str.SetReadDeadline(time.Time{})
 	}
 
-	connState := conn.ConnectionState().TLS
-	req.TLS = &connState
+	if req.Method == http.MethodConnect || scheme != "http" {
+		connState := conn.ConnectionState().TLS
+		req.TLS = &connState
+	}
 	req.RemoteAddr = conn.RemoteAddr().String()
 
 	// Enforce the Content-Length, if set (section 4.1.2 of RFC 9114).

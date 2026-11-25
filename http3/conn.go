@@ -85,10 +85,10 @@ func newRawConn(
 
 // ReadRequestHeader reads and decodes the request header section of hf from r.
 // A non-nil fields collects the decoded fields.
-func (c *rawConn) ReadRequestHeader(r io.Reader, hf *headersFrame, fields *[]qpack.HeaderField) (*http.Request, error) {
+func (c *rawConn) ReadRequestHeader(r io.Reader, hf *headersFrame, fields *[]qpack.HeaderField) (_ *http.Request, scheme string, _ error) {
 	b, err := c.readFieldSection(r, hf)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	return requestFromHeaders(c.decoder.Decode(b), c.maxFieldSectionSize, fields)
 }

@@ -186,25 +186,25 @@ func (s *Stream) nextHeadersFrame(errCode ErrCode) (*headersFrame, error) {
 // readRequestHeader reads the request header.
 // If it exceeds our SETTINGS_MAX_FIELD_SECTION_SIZE, it returns errHeaderTooLarge, and the caller sends a 431.
 // On other errors, it resets the stream or closes the connection.
-func (s *Stream) readRequestHeader() (*http.Request, error) {
+func (s *Stream) readRequestHeader() (_ *http.Request, scheme string, _ error) {
 	hf, err := s.nextHeadersFrame(ErrCodeRequestIncomplete)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var fields *[]qpack.HeaderField
 	if s.qlogger != nil {
 		f := make([]qpack.HeaderField, 0, 16)
 		fields = &f
 	}
-	req, err := s.conn.ReadRequestHeader(s.frameParser, hf, fields)
+	req, scheme, err := s.conn.ReadRequestHeader(s.frameParser, hf, fields)
 	if _, ok := errors.AsType[*fieldSectionReadError](err); ok {
 		maybeQlogInvalidHeadersFrame(s.qlogger, s.StreamID(), hf.Length)
 		if errors.Is(err, errHeadersFrameTooLarge) {
-			return nil, errHeaderTooLarge
+			return nil, "", errHeaderTooLarge
 		}
 		s.CancelRead(quic.StreamErrorCode(ErrCodeRequestIncomplete))
 		s.CancelWrite(quic.StreamErrorCode(ErrCodeRequestIncomplete))
-		return nil, err
+		return nil, "", err
 	}
 	if s.qlogger != nil {
 		qlogParsedHeadersFrame(s.qlogger, s.StreamID(), hf, *fields, err)
@@ -214,9 +214,9 @@ func (s *Stream) readRequestHeader() (*http.Request, error) {
 			s.CancelRead(decodeErrorCode(err))
 			s.CancelWrite(decodeErrorCode(err))
 		}
-		return nil, err
+		return nil, "", err
 	}
-	return req, nil
+	return req, scheme, nil
 }
 
 // readResponseHeader reads a response header, informational or final.

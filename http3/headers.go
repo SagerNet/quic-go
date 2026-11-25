@@ -285,10 +285,10 @@ func parseTrailers(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *[]qpa
 	return h, nil
 }
 
-func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *[]qpack.HeaderField) (*http.Request, error) {
+func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *[]qpack.HeaderField) (_ *http.Request, scheme string, _ error) {
 	hdr, err := parseHeaders(decodeFn, true, sizeLimit, headerFields)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	_, hasPath := hdr.Headers[":path"]
 	_, hasAuthority := hdr.Headers[":authority"]
@@ -300,21 +300,21 @@ func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *
 	delete(hdr.Headers, ":protocol")
 
 	if hdr.Method == "" {
-		return nil, errors.New(":method must not be empty")
+		return nil, "", errors.New(":method must not be empty")
 	}
 	if !validMethod(hdr.Method) {
-		return nil, fmt.Errorf("invalid :method: %q", hdr.Method)
+		return nil, "", fmt.Errorf("invalid :method: %q", hdr.Method)
 	}
 
 	// RFC 9114, Section 4.3.1 allows Host as an alternative to :authority.
 	hosts := hdr.Headers["Host"]
 	if len(hosts) > 1 {
-		return nil, errors.New("too many Host headers")
+		return nil, "", errors.New("too many Host headers")
 	}
 	host := hdr.Headers.Get("Host")
 	// If both are present, they must contain the same value.
 	if hasAuthority && len(hosts) > 0 && hdr.Authority != host {
-		return nil, errors.New(":authority and Host header field values do not match")
+		return nil, "", errors.New(":authority and Host header field values do not match")
 	}
 	isConnect := hdr.Method == http.MethodConnect
 	// If :authority is missing, use Host as a fallback for HTTP(S) requests.
@@ -323,7 +323,7 @@ func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *
 		hdr.Authority = host
 	}
 	if strings.Contains(hdr.Authority, "@") && (hdr.Scheme == "http" || hdr.Scheme == "https") {
-		return nil, errors.New("userinfo is not allowed in :authority")
+		return nil, "", errors.New("userinfo is not allowed in :authority")
 	}
 
 	// concatenate cookie headers, see https://tools.ietf.org/html/rfc6265#section-5.4
@@ -335,36 +335,36 @@ func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *
 	isExtendedConnected := isConnect && hdr.Protocol != ""
 	if isExtendedConnected {
 		if !validExtendedConnectProtocol(hdr.Protocol) {
-			return nil, fmt.Errorf("invalid :protocol: %q", hdr.Protocol)
+			return nil, "", fmt.Errorf("invalid :protocol: %q", hdr.Protocol)
 		}
 		if hdr.Scheme == "" || hdr.Path == "" || hdr.Authority == "" {
-			return nil, errors.New("extended CONNECT: :scheme, :path and :authority must not be empty")
+			return nil, "", errors.New("extended CONNECT: :scheme, :path and :authority must not be empty")
 		}
 	} else if isConnect {
 		if hasScheme || hasPath || hdr.Authority == "" { // normal CONNECT
-			return nil, errors.New(":scheme and :path must be omitted and :authority must not be empty")
+			return nil, "", errors.New(":scheme and :path must be omitted and :authority must not be empty")
 		}
 	} else if len(hdr.Path) == 0 || len(hdr.Authority) == 0 {
-		return nil, errors.New(":path and :authority must not be empty")
+		return nil, "", errors.New(":path and :authority must not be empty")
 	}
 
 	if !isExtendedConnected && hasProtocol {
-		return nil, errors.New(":protocol must be omitted")
+		return nil, "", errors.New(":protocol must be omitted")
 	}
 	// url.ParseRequestURI accepts absolute URIs and "*", so validate :path before parsing.
 	validPath := strings.HasPrefix(hdr.Path, "/") || (hdr.Method == http.MethodOptions && hdr.Path == "*")
 	if (!isConnect || isExtendedConnected) && !validPath {
-		return nil, fmt.Errorf("invalid :path: %q", hdr.Path)
+		return nil, "", fmt.Errorf("invalid :path: %q", hdr.Path)
 	}
 	// Like net/http's HTTP/2 server, only accept http and https for regular requests.
 	// This also rejects a missing :scheme, see section 4.3.1 of RFC 9114.
 	if !isConnect && hdr.Scheme != "http" && hdr.Scheme != "https" {
-		return nil, fmt.Errorf("invalid :scheme: %q", hdr.Scheme)
+		return nil, "", fmt.Errorf("invalid :scheme: %q", hdr.Scheme)
 	}
 	// Reject bytes that can't appear in a host and port, see section 4.3.1 of RFC 9114.
 	// Like net/http, we don't validate the host and port syntax, see https://github.com/golang/go/issues/78172.
 	if !httpguts.ValidHostHeader(hdr.Authority) {
-		return nil, fmt.Errorf("invalid :authority: %q", hdr.Authority)
+		return nil, "", fmt.Errorf("invalid :authority: %q", hdr.Authority)
 	}
 
 	var u *url.URL
@@ -375,7 +375,7 @@ func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *
 	if isExtendedConnected {
 		u, err = url.ParseRequestURI(hdr.Path)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		requestURI = hdr.Path
 		protocol = hdr.Protocol
@@ -385,7 +385,7 @@ func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *
 	} else {
 		u, err = url.ParseRequestURI(hdr.Path)
 		if err != nil {
-			return nil, fmt.Errorf("invalid request URI: %w", err)
+			return nil, "", fmt.Errorf("invalid request URI: %w", err)
 		}
 		requestURI = hdr.Path
 	}
@@ -403,7 +403,7 @@ func requestFromHeaders(decodeFn qpack.DecodeFunc, sizeLimit int, headerFields *
 		RequestURI:    requestURI,
 	}
 	req.Trailer = extractAnnouncedTrailers(req.Header)
-	return req, nil
+	return req, hdr.Scheme, nil
 }
 
 func validExtendedConnectProtocol(protocol string) bool {
