@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/quic-go/quic-go/internal/protocol"
-
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
